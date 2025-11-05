@@ -1,0 +1,9 @@
+# Minimal dependencies for the RGB-D -> VLM -> mapping pipeline
+torch>=1.13.0
+transformers>=4.30.0
+open3d>=0.18.0
+Pillow>=9.0.0
+numpy>=1.23.0
+tqdm
+# Optional: pyoctomap for OctoMap integration (may require system libs)
+# pyoctomap
