@@ -40,11 +40,15 @@ class VLM:
         txt_feats = txt_feats / np.linalg.norm(txt_feats, axis=1, keepdims=True)
         return txt_feats
 
-    @staticmethod
-    def cosine_similarity_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-        """Compute cosine similarities between rows of `a` and rows of `b`.
+    # @staticmethod
+    # def cosine_similarity_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    #     """
+    #     Compute cosine similarities between rows of `a` and rows of `b`.
 
-        Returns an (a.shape[0], b.shape[0]) array.
-        """
-        # a and b are expected to be normalized
-        return np.matmul(a, b.T)
+    #     Both `a` and `b` must be L2-normalized along axis 1 prior to calling this function.
+    #     # Normalize a and b to ensure true cosine similarities
+    #     a_norm = a / np.linalg.norm(a, axis=1, keepdims=True)
+    #     b_norm = b / np.linalg.norm(b, axis=1, keepdims=True)
+    #     return np.matmul(a_norm, b_norm.T)
+    #     """
+    #     return np.matmul(a, b.T)
