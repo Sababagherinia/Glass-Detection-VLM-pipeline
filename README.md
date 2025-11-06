@@ -1,6 +1,5 @@
-# RGB-D -> VLM -> Mapping pipeline
-
 # Glass-Detection-VLM-pipeline
+# RGB-D -> VLM -> Mapping pipeline
 This repository contains a minimal skeleton pipeline to read RGB-D frames, process them with a visual-language model (e.g CLIP via Hugging Face `transformers`), and accumulate a 3D map (Open3D output, finally pyoctomap integration).
 
 there is a folder `data` with subfolders `rgb` and `depth`. Place matching RGB images in `data/rgb` and depth images in `data/depth` (16-bit PNG in millimeters or float meters accepted).
