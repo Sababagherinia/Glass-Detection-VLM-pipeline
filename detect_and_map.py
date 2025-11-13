@@ -1,9 +1,9 @@
-"""Detect glass regions with a VLM (CLIP) and produce a simple planar map.
+"""Detect glass regions with a VLM (CLIP) and produce a simple planar map (script version).
 
 Workflow (single-image):
 - Load RGB image (required). Optional depth image (aligned, same size) can be provided.
-- Split the image into an R x C grid of patches and compute CLIP image embeddings for each patch.
-- Compare patch embeddings to hard-coded glass-related text prompts to find glass patches.
+- Use OWL-ViT detector (optional) or split the image into a grid of patches and compute CLIP embeddings per patch.
+- Compare embeddings to hard-coded glass-related text prompts to find glass patches or boxes.
 - Produce a binary mask of detected glass regions and save an overlay image.
 - If depth is provided: backproject masked pixels into 3D points (using provided intrinsics or sensible defaults) and
   either insert them into a pyoctomap octree (if pyoctomap is installed) or save a PLY point cloud as fallback.
@@ -18,6 +18,7 @@ import warnings
 
 import numpy as np
 from PIL import Image, ImageDraw
+from PIL import ImageFilter  # NEW
 
 # Ensure repo root on path for local imports
 import pathlib as _pathlib
@@ -79,28 +80,58 @@ def make_patches(img: Image.Image, grid: int):
 def overlay_mask_on_image(img: Image.Image, mask: np.ndarray) -> Image.Image:
     # mask is HxW boolean
     overlay = img.convert("RGBA")
-    red = Image.new("RGBA", img.size, (255, 0, 0, 120))
+    red = Image.new("RGBA", img.size, (255, 0, 0, 90))  # slightly lower alpha
     mask_img = Image.fromarray((mask * 255).astype(np.uint8)).convert("L")
     overlay.paste(red, (0, 0), mask_img)
     return overlay
 
+def draw_detections(image: Image.Image, detections, color=(0, 255, 0), width=3) -> Image.Image:
+    """Draw OWL-ViT detection boxes and labels on top of image."""
+    out = image.copy()
+    draw = ImageDraw.Draw(out)
+    for d in detections or []:
+        x0, y0, x1, y1 = list(map(int, d["box"]))[:4]
+        label = d.get("label", "glass")
+        score = d.get("score", 0.0)
+        draw.rectangle([x0, y0, x1, y1], outline=color, width=width)
+        txt = f"{label}: {score:.2f}"
+        # background for text for readability
+        tw, th = draw.textlength(txt), 12
+        draw.rectangle([x0, max(0, y0 - th - 2), x0 + tw + 6, y0], fill=(0, 0, 0, 160))
+        draw.text((x0 + 3, y0 - th - 1), txt, fill=(255, 255, 255))
+    return out
 
-def backproject_mask_to_points(depth: np.ndarray, mask: np.ndarray, fx: float, fy: float, cx: float, cy: float):
-    # depth: HxW float meters
-    ys, xs = np.nonzero(mask)
-    zs = depth[ys, xs]
-    valid = np.isfinite(zs) & (zs > 0)
-    xs = xs[valid]
-    ys = ys[valid]
-    zs = zs[valid]
-    if zs.size == 0:
-        return np.zeros((0, 3), dtype=np.float32)
-    X = (xs - cx) * zs / fx
-    Y = (ys - cy) * zs / fy
-    Z = zs
-    pts = np.stack([X, Y, Z], axis=1)
-    return pts
+def scores_to_heatmap(best_sims: np.ndarray, grid: int, size: tuple[int, int]) -> np.ndarray:
+    """
+    Convert per-patch scores (length grid*grid, row-major) to a pixel heatmap HxW in [0,1]
+    via bilinear upsampling to smooth blockiness.
+    """
+    w, h = size
+    # arrange to (grid, grid)
+    heat_grid = best_sims.reshape(grid, grid)
+    # scale to [0,1] across present scores (robust min/max)
+    vmin = float(np.percentile(heat_grid, 1))
+    vmax = float(np.percentile(heat_grid, 99))
+    if vmax <= vmin:
+        vmax = vmin + 1e-6
+    norm = (heat_grid - vmin) / (vmax - vmin)
+    small = (norm * 255).astype(np.uint8)
+    # upsample smoothly to image resolution
+    heat_img = Image.fromarray(small, mode="L").resize((w, h), resample=Image.BILINEAR)
+    heat = np.asarray(heat_img).astype(np.float32) / 255.0
+    return heat
 
+def morph_open_mask(mask: np.ndarray, ksize: int = 3) -> np.ndarray:
+    """
+    Light morphological opening using PIL Min/Max filters to reduce blockiness and
+    break thin connections. ksize should be odd (3, 5).
+    """
+    if ksize < 3 or ksize % 2 == 0:
+        return mask
+    img = Image.fromarray((mask.astype(np.uint8) * 255))
+    eroded = img.filter(ImageFilter.MinFilter(ksize))
+    opened = eroded.filter(ImageFilter.MaxFilter(ksize))
+    return (np.asarray(opened) > 0).astype(np.uint8)
 
 def main():
     args = parse_args()
@@ -118,27 +149,34 @@ def main():
     vlm = VLM(device=args.device)
     txt_embs = vlm.text_embeddings(GLASS_PROMPTS)
 
-    # Use OWL-ViT detector if requested and available, otherwise fall back to patch-grid VLM
+    # Prefer OWL-ViT detector as the primary detector; fall back to patch-grid VLM if it's not available
     mask = np.zeros((h, w), dtype=np.uint8)
-    if args.use_detector:
-        if not OWL_AVAILABLE:
-            print("OWL-ViT detector requested but not available (install transformers with OWL-ViT support). Falling back to grid-based VLM.")
-        else:
+    used_detector = False
+    dets = []
+    if OWL_AVAILABLE:
+        try:
             detector = OwlDetector(device=args.device)
             dets = detector.detect(img, GLASS_PROMPTS, threshold=args.threshold)
-            print(f"Detector returned {len(dets)} detections")
-            for d in dets:
-                x0, y0, x1, y1 = list(map(int, d["box"]))[:4]
-                # clamp
-                x0 = max(0, min(w - 1, x0))
-                x1 = max(0, min(w, x1))
-                y0 = max(0, min(h - 1, y0))
-                y1 = max(0, min(h, y1))
-                if x1 > x0 and y1 > y0:
-                    mask[y0:y1, x0:x1] = 1
-    if mask.sum() == 0:
-        # grid fallback
-        grid = max(1, args.grid)
+            print(f"OWL-ViT detector returned {len(dets)} detections")
+            if len(dets) > 0:
+                used_detector = True
+                for d in dets:
+                    x0, y0, x1, y1 = list(map(int, d["box"]))[:4]
+                    # clamp
+                    x0 = max(0, min(w - 1, x0))
+                    x1 = max(0, min(w, x1))
+                    y0 = max(0, min(h - 1, y0))
+                    y1 = max(0, min(h, y1))
+                    if x1 > x0 and y1 > y0:
+                        mask[y0:y1, x0:x1] = 1
+        except Exception as e:
+            print("OWL-ViT detector failed — falling back to grid-based VLM:", e)
+
+    # If detector not available or returned no detections, use grid-based VLM fallback
+    if not used_detector:
+        if args.use_detector and not OWL_AVAILABLE:
+            print("OWL-ViT detector requested but not available (install transformers with OWL-ViT support). Using grid-based VLM.")
+        grid = max(2, args.grid)  # ensure >=2 to allow smoothing
         patches, boxes = make_patches(img, grid)
 
         # Batch compute image embeddings for patches
@@ -156,19 +194,31 @@ def main():
         img_embs = np.vstack(img_embs_list)
 
         sims = img_embs @ txt_embs.T  # (num_patches, num_texts)
-        best_sims = sims.max(axis=1)
-        best_idx = sims.argmax(axis=1)
+        best_sims = sims.max(axis=1)  # length grid*grid
 
-        # build mask by marking full patch as positive if best_sims > threshold
-        for (x0, y0, x1, y1), score, ti in zip(boxes, best_sims, best_idx):
-            if score >= args.threshold:
-                mask[y0:y1, x0:x1] = 1
+        # Build a smooth heatmap and threshold it to a pixel-accurate mask
+        heat = scores_to_heatmap(best_sims, grid, (w, h))  # [0,1]
+        mask = (heat >= args.threshold).astype(np.uint8)
 
-    # Save overlay
-    overlay = overlay_mask_on_image(img, mask)
+        # Light morphological opening to reduce blockiness and separate objects
+        mask = morph_open_mask(mask, ksize=3)
+
+    # Save overlay (for detections, also draw box outlines for clarity)
+    overlay_base = overlay_mask_on_image(img, mask.astype(bool))
+    if used_detector and len(dets) > 0:
+        overlay = draw_detections(overlay_base.convert("RGB"), dets, color=(0, 255, 0), width=3)
+    else:
+        overlay = overlay_base
     overlay_path = out_dir / (img_p.stem + "_glass_overlay.png")
     overlay.save(overlay_path)
     print(f"Saved overlay image to: {overlay_path}")
+
+    # Optional: save the continuous heatmap for analysis when using grid fallback
+    if not used_detector:
+        heat_vis = (heat * 255).astype(np.uint8)
+        heatmap_path = out_dir / (img_p.stem + "_glass_heatmap.png")
+        Image.fromarray(heat_vis, mode="L").save(heatmap_path)
+        print(f"Saved glass heatmap to: {heatmap_path}")
 
     # Save raw mask
     mask_path = out_dir / (img_p.stem + "_glass_mask.png")

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Output / artifacts
+output/
+*.ot
+*.ply
+*_vlm_result.png
+*_glass_overlay.png
+*_glass_mask.png
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
