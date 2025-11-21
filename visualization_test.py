@@ -1,61 +1,69 @@
+# flowchart ==> VLM detection → pixel bbox → depth map → project to 3D → insert into octree
+                                                                            #   ↓
+                                                                #  slice z range → 2D planar map
+
 # visulalization
 import matplotlib.pyplot as plt
-import pyoctomap
+import pyoctomap as p
 import numpy as np
 from pathlib import Path
 
-# Resolve absolute .bt path next to this script
-bt_path = Path(__file__).with_name("my_map.bt")
-if not bt_path.exists():
-    raise FileNotFoundError(f"BT file not found: {bt_path}")
+# Create an octree with 0.1m resolution
+tree = p.Octree(0.1)
 
-def load_octree(bt_file: Path) -> pyoctomap.OcTree:
-    # Try OcTree.readBinary with str, then bytes
-    tree = pyoctomap.OcTree(0.1)
-    try:
-        ok = tree.readBinary(str(bt_file))
-    except TypeError:
-        ok = tree.readBinary(str(bt_file).encode("utf-8"))
-    if ok:
-        return tree
-    # Fallback: AbstractOcTree.read with bytes, then str
-    try:
-        at = pyoctomap.AbstractOcTree.read(str(bt_file).encode("utf-8"))
-    except TypeError:
-        at = pyoctomap.AbstractOcTree.read(str(bt_file))
-    if at is None:
-        raise RuntimeError(f"Failed to read octree from {bt_file}")
-    # In most builds this is already an OcTree
-    if isinstance(at, pyoctomap.OcTree):
-        return at
-    # Some builds expose cast; if not present, assume OcTree
-    try:
-        return pyoctomap.castToOcTree(at)  # type: ignore[attr-defined]
-    except Exception:
-        return at  # type: ignore[return-value]
+def pixel_to_3d(u, v, depth, intrinsics):
+    fx, fy = intrinsics['fx'], intrinsics['fy']
+    cx, cy = intrinsics['cx'], intrinsics['cy']
+    z = depth[v, u]
+    x = (u - cx) * z / fx
+    y = (v - cy) * z / fy
+    return np.array([x, y, z])
 
-# Load octree
-tree = load_octree(bt_path)
+# Load depth image
+camera_origin = p.point3d(0,0,0)
 
-# Collect occupied voxel centers
-occupied_points = []
-it = tree.begin_leafs()
-end = tree.end_leafs()
-while it != end:
-    if tree.isNodeOccupied(it):
-        p = it.getCoordinate()
-        occupied_points.append([p.x(), p.y(), p.z()])
-    it.next()
+# Assume depth is a 2D numpy array with depth values in meters
+depth = np.load("depth_image.npy")  # shape (H, W)
+for det in detections:
+    bbox = det["bbox"]  # (x_min, y_min, x_max, y_max)
+    x_min, y_min, x_max, y_max = map(int, bbox)
 
-occupied_points = np.array(occupied_points, dtype=float)
-if occupied_points.size == 0:
-    print(f"No occupied nodes found in {bt_path.name}")
-else:
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-    ax.scatter(occupied_points[:, 0], occupied_points[:, 1], occupied_points[:, 2], c="r", s=10)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.set_title("Occupied voxels")
-    plt.show()
+    for u in range(x_min, x_max):
+        for v in range(y_min, y_max):
+            pt_3d = pixel_to_3d(u, v, depth, intrinsics)
+            pt = p.point3d(pt_3d[0], pt_3d[1], pt_3d[2])
+            tree.insertRay(camera_origin, pt)
+    
+# Estimate depth for missing values
+z_est = estimate_distance_from_surrounding(depth, det["bbox"])
+
+# Fill in the bounding box area with estimated depth
+for u in range(x_min, x_max):
+    for v in range(y_min, y_max):
+        pt_3d = pixel_to_3d(u, v, z_est, intrinsics)
+        pt = p.point3d(*pt_3d)
+        tree.updateNode(pt, True) # mark as occupied
+
+# Visualize a slice of the octree at z=1.0
+z_min = 0.9
+z_max = 1.1
+planar = []
+
+# Create an iterator for leaf nodes within the bounding box
+it = tree.begin_leafs_bbx(p.point3d(-20,-20,z_min), p.point3d(20,20,z_max))
+
+# Iterate through the leaf nodes in the bounding box
+for leaf in it:
+    x = round(leaf.getX(),1)
+    y = round(leaf.getY(),1)
+    occ = leaf.getOccupancy()
+    planar.append((x,y,occ))
+
+xs = sorted(set([p[0] for p in planar.keys()]))
+ys = sorted(set([p[1] for p in planar.keys()]))
+occ_grid = np.zeros((len(ys), len(xs)))
+
+for (x,y,occ) in planar:
+    xi = xs.index(x)
+    yi = ys.index(y)
+    occ_grid[yi, xi] = occ > 0.5 # occupied if occupancy > 0.5
