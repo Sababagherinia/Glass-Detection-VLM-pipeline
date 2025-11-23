@@ -33,7 +33,7 @@ class OwlDetector:
 
         # Post-process to get boxes and scores in image coordinates
         target_sizes = torch.tensor([(image.size[1], image.size[0])], dtype=torch.long)
-        results = self.processor.post_process_object_detection(outputs, threshold=threshold, target_sizes=target_sizes)
+        results = self.processor.post_process_grounded_object_detection(outputs, threshold=threshold, target_sizes=target_sizes)
 
         detections: List[Dict[str, Any]] = []
         # results is a list (batch)

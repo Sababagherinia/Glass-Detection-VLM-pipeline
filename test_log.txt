@@ -1,0 +1,110 @@
+testing the detector and semantic interpretation
+out of 17 sample only two of the images which had *incomplete window* frame were not detected
+these results are for *google/owlvit-base-patch32* model and all the detected scores were > 0.30
+which is a good sign
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496473.jpg
+0
+No detections to build safety map.
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496474.jpg
+1
+Detected a glass window with score 0.32 at box (270.41094970703125, 449.97332763671875, 712.0260620117188, 767.4317016601562)
+Safety decision: OK
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496475.jpg
+1
+Detected a glass window with score 0.32 at box (213.55947875976562, 466.197265625, 675.1341552734375, 772.7688598632812)
+Safety decision: OK
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496476.jpg
+1
+Detected a glass window with score 0.44 at box (314.78839111328125, 130.82623291015625, 966.9093017578125, 542.087646484375)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496477.jpg
+2
+Detected a glass window with score 0.41 at box (699.8004150390625, 45.54814529418945, 1233.10009765625, 399.4315185546875)
+Detected a glass window with score 0.40 at box (127.37972259521484, 115.86215209960938, 569.8486938476562, 385.3371887207031)   
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496478.jpg
+2
+Detected a glass window with score 0.46 at box (511.50238037109375, 170.48336791992188, 907.4246215820312, 447.73712158203125)
+Detected a glass window with score 0.32 at box (1096.11376953125, 108.75281524658203, 1284.637451171875, 466.2651672363281)     
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496479.jpg
+2
+Detected a glass window with score 0.49 at box (777.3969116210938, 127.49230194091797, 1284.7314453125, 584.1878662109375)
+Detected a glass window with score 0.44 at box (-8.229923248291016, 156.41546630859375, 580.6317138671875, 558.5953979492188)   
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496480.jpg
+1
+Detected a glass window with score 0.36 at box (7.2441864013671875, 124.0054931640625, 832.556640625, 580.8635864257812)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496481.jpg
+1
+Detected a glass window with score 0.49 at box (385.9254455566406, 94.9096450805664, 1054.432373046875, 515.1783447265625)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496482.jpg
+2
+Detected a glass window with score 0.51 at box (751.9171752929688, 67.56158447265625, 1285.409912109375, 534.0283813476562)
+Detected a glass window with score 0.45 at box (0.9838485717773438, 81.28582763671875, 491.55389404296875, 528.632568359375)    
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496483.jpg
+1
+Detected a glass window with score 0.44 at box (467.318359375, 47.53324890136719, 864.5458374023438, 558.4111328125)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496484.jpg
+1
+Detected a glass window with score 0.43 at box (181.29925537109375, 41.29960250854492, 810.9677124023438, 510.0989990234375)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496485.jpg
+1
+Detected a glass window with score 0.52 at box (403.40118408203125, 189.84877014160156, 999.5347900390625, 546.6810913085938)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496486.jpg
+1
+Detected a glass window with score 0.47 at box (27.710838317871094, 33.301536560058594, 1118.22412109375, 705.7012329101562)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496487.jpg
+2
+Detected a glass window with score 0.49 at box (405.43658447265625, 155.84524536132812, 801.2496948242188, 483.6864929199219)
+Detected a glass window with score 0.41 at box (983.0762939453125, 80.66887664794922, 1278.8084716796875, 539.5847778320312)    
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496488.jpg
+1
+Detected a glass window with score 0.42 at box (230.4383087158203, 152.9848175048828, 868.0321655273438, 475.8594970703125)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\glazen-binnendeuren-op-maat.jpg
+1
+Detected a mirror with score 0.33 at box (369.5614318847656, 122.56668090820312, 1013.0408935546875, 1053.358642578125)
+Safety decision: STOP
