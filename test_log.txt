@@ -108,3 +108,270 @@ Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\glazen-binne
 1
 Detected a mirror with score 0.33 at box (369.5614318847656, 122.56668090820312, 1013.0408935546875, 1053.358642578125)
 Safety decision: STOP
+
+==========================================
+base16
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496473.jpg
+0
+No detections to build safety map.
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496474.jpg
+0
+No detections to build safety map.
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496475.jpg
+0
+No detections to build safety map.
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496476.jpg
+1
+Total images with detections: 1 out of 17 for Owlvit-base16
+Detected a glass window with score 0.31 at box (326.5830078125, 123.1795654296875, 992.3197021484375, 538.0615844726562)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496477.jpg
+1
+Total images with detections: 2 out of 17 for Owlvit-base16
+Detected a glass window with score 0.33 at box (680.4302978515625, 43.978755950927734, 1220.2967529296875, 400.0858154296875)
+Safety decision: OK
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496478.jpg
+2
+Total images with detections: 3 out of 17 for Owlvit-base16
+Detected a glass window with score 0.39 at box (528.541015625, 197.5582275390625, 884.9776611328125, 453.8713073730469)
+Detected a glass window with score 0.36 at box (1102.2904052734375, 114.1818618774414, 1285.9898681640625, 462.1566162109375)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496479.jpg
+2
+Total images with detections: 4 out of 17 for Owlvit-base16
+Detected a glass window with score 0.43 at box (-3.669586181640625, 149.9848175048828, 566.03759765625, 557.6629028320312)
+Detected a glass window with score 0.43 at box (791.0010986328125, 129.19093322753906, 1274.3323974609375, 573.9923095703125)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496480.jpg
+1
+Total images with detections: 5 out of 17 for Owlvit-base16
+Detected a glass window with score 0.31 at box (1127.549560546875, 77.0538558959961, 1281.3543701171875, 608.25634765625)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496481.jpg
+1
+Total images with detections: 6 out of 17 for Owlvit-base16
+Detected a glass window with score 0.38 at box (404.6938781738281, 87.67829895019531, 1043.998046875, 522.6035766601562)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496482.jpg
+2
+Total images with detections: 7 out of 17 for Owlvit-base16
+Detected a glass window with score 0.48 at box (747.189208984375, 55.053070068359375, 1274.057861328125, 522.0101318359375)
+Detected a glass window with score 0.45 at box (9.314689636230469, 74.49432373046875, 499.2685241699219, 530.1355590820312)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496483.jpg
+1
+Total images with detections: 8 out of 17 for Owlvit-base16
+Detected a glass window with score 0.37 at box (499.46343994140625, 79.0599594116211, 864.3929443359375, 565.1448974609375)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496484.jpg
+1
+Total images with detections: 9 out of 17 for Owlvit-base16
+Detected a glass window with score 0.35 at box (184.9482421875, 48.40432357788086, 780.1809692382812, 510.60394287109375)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496485.jpg
+1
+Total images with detections: 10 out of 17 for Owlvit-base16
+Detected a glass window with score 0.46 at box (425.6155700683594, 185.04336547851562, 986.027099609375, 542.5751342773438)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496486.jpg
+1
+Total images with detections: 11 out of 17 for Owlvit-base16
+Detected a glass window with score 0.34 at box (91.66439056396484, 54.113887786865234, 1121.1346435546875, 681.1951904296875)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496487.jpg
+2
+Total images with detections: 12 out of 17 for Owlvit-base16
+Detected a glass window with score 0.42 at box (983.6732177734375, 77.67003631591797, 1268.40576171875, 526.5000610351562)
+Detected a glass window with score 0.34 at box (386.51483154296875, 169.51226806640625, 795.1446533203125, 482.21148681640625)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496488.jpg
+0
+No detections to build safety map.
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\glazen-binnendeuren-op-maat.jpg
+0
+No detections to build safety map.
+
+rage14
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496473.jpg
+3
+Total images with detections: 1 out of 17 for Owlvit-large14 model
+Detected window with score 0.34 at box (-0.5818623304367065, 381.02471923828125, 123.67086791992188, 651.0875854492188)
+Detected window with score 0.33 at box (142.1809539794922, 392.552734375, 269.5089416503906, 674.2381591796875)
+Detected window with score 0.33 at box (483.9465637207031, 412.72674560546875, 629.1590576171875, 701.2216796875)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496474.jpg
+4
+Total images with detections: 2 out of 17 for Owlvit-large14 model
+Detected window with score 0.36 at box (289.0494079589844, 512.8193969726562, 372.2789306640625, 721.8447875976562)
+Detected window with score 0.35 at box (592.2742309570312, 463.01361083984375, 710.5364990234375, 736.614013671875)
+Detected window with score 0.34 at box (470.9472351074219, 482.3160400390625, 576.4337768554688, 734.5787353515625)
+Detected window with score 0.31 at box (367.10748291015625, 498.47454833984375, 443.7841491699219, 723.9489135742188)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496475.jpg
+3
+Total images with detections: 3 out of 17 for Owlvit-large14 model
+Detected window with score 0.36 at box (534.1546020507812, 487.533203125, 661.776123046875, 754.7335815429688)
+Detected window with score 0.33 at box (221.03363037109375, 483.2759094238281, 337.6765441894531, 750.46337890625)
+Detected window with score 0.31 at box (368.7630920410156, 487.95196533203125, 502.3916015625, 761.0936889648438)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496476.jpg
+3
+Total images with detections: 4 out of 17 for Owlvit-large14 model
+Detected window with score 0.34 at box (595.8284912109375, 174.20687866210938, 755.0562133789062, 512.2339477539062)
+Detected window with score 0.31 at box (444.0582580566406, 199.4427947998047, 575.1594848632812, 488.8046875)
+Detected window with score 0.30 at box (329.00970458984375, 158.83045959472656, 937.6331787109375, 534.6797485351562)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496477.jpg
+5
+Total images with detections: 5 out of 17 for Owlvit-large14 model
+Detected window with score 0.35 at box (733.7281494140625, 45.22418975830078, 1219.5, 408.3504943847656)
+Detected window with score 0.34 at box (136.2083282470703, 121.7035140991211, 544.6796264648438, 383.212646484375)
+Detected window with score 0.32 at box (732.590087890625, 84.6576156616211, 885.4968872070312, 388.7911376953125)
+Detected window with score 0.31 at box (343.959228515625, 128.81507873535156, 448.0404968261719, 371.91046142578125)
+Detected window with score 0.30 at box (899.766357421875, 71.5853500366211, 1078.13037109375, 399.0706481933594)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496478.jpg
+3
+Total images with detections: 6 out of 17 for Owlvit-large14 model
+Detected window with score 0.36 at box (1101.748291015625, 105.17913818359375, 1281.665771484375, 448.7628479003906)
+Detected window with score 0.33 at box (691.7352294921875, 210.06143188476562, 780.6417846679688, 436.04669189453125)
+Detected window with score 0.32 at box (1117.893310546875, 111.35083770751953, 1285.415771484375, 456.17559814453125)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496479.jpg
+3
+Total images with detections: 7 out of 17 for Owlvit-large14 model
+Detected window with score 0.35 at box (145.9310302734375, 171.32205200195312, 361.138916015625, 546.2047729492188)
+Detected window with score 0.33 at box (825.052734375, 138.4263458251953, 1289.5958251953125, 577.4517822265625)
+Detected window with score 0.31 at box (366.4819641113281, 164.40748596191406, 525.4390258789062, 551.7778930664062)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496480.jpg
+5
+Total images with detections: 8 out of 17 for Owlvit-large14 model
+Detected window with score 0.34 at box (1132.5218505859375, 73.85093688964844, 1280.925537109375, 616.9691162109375)
+Detected window with score 0.33 at box (9.515914916992188, 130.10389709472656, 767.1243896484375, 583.3388061523438)
+Detected window with score 0.33 at box (364.69451904296875, 154.04583740234375, 562.271728515625, 565.4899291992188)
+Detected window with score 0.32 at box (39.267494201660156, 189.03053283691406, 178.614990234375, 525.1318969726562)
+Detected window with score 0.30 at box (181.40811157226562, 170.3656768798828, 347.989501953125, 557.1229858398438)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496481.jpg
+2
+Total images with detections: 9 out of 17 for Owlvit-large14 model
+Detected window with score 0.35 at box (831.346923828125, 125.89823150634766, 1021.4376831054688, 488.6443176269531)
+Detected window with score 0.33 at box (384.0633544921875, 92.44941711425781, 1045.2928466796875, 504.25665283203125)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496482.jpg
+3
+Total images with detections: 10 out of 17 for Owlvit-large14 model
+Detected window with score 0.38 at box (0.0079345703125, 87.14546203613281, 485.71240234375, 542.569091796875)
+Detected window with score 0.37 at box (766.1697998046875, 64.54143524169922, 1272.740966796875, 513.8648071289062)
+Detected window with score 0.34 at box (9.271059036254883, 96.61078643798828, 243.478515625, 528.533447265625)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496483.jpg
+4
+Total images with detections: 11 out of 17 for Owlvit-large14 model
+Detected window with score 0.42 at box (500.70526123046875, 67.8185806274414, 860.8582763671875, 553.1334838867188)
+Detected window with score 0.35 at box (643.3511962890625, 141.6514129638672, 740.600341796875, 506.4022216796875)
+Detected window with score 0.34 at box (565.7611083984375, 183.9455108642578, 630.36181640625, 473.816162109375)
+Detected window with score 0.32 at box (748.67333984375, 83.17564392089844, 848.0853881835938, 555.8656005859375)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496484.jpg
+3
+Total images with detections: 12 out of 17 for Owlvit-large14 model
+Detected window with score 0.42 at box (171.95840454101562, 32.14897918701172, 776.8753051757812, 513.5247802734375)
+Detected window with score 0.32 at box (449.2292785644531, 97.78795623779297, 595.5928955078125, 490.43853759765625)
+Detected window with score 0.32 at box (199.08895874023438, 156.644287109375, 309.5409851074219, 468.92291259765625)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496485.jpg
+2
+Total images with detections: 13 out of 17 for Owlvit-large14 model
+Detected window with score 0.38 at box (-1.7177295684814453, 182.813720703125, 161.89212036132812, 519.654541015625)
+Detected window with score 0.33 at box (439.68975830078125, 195.759765625, 971.0321044921875, 535.6585693359375)
+Safety decision: CAUTIOUS
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496486.jpg
+1
+Total images with detections: 14 out of 17 for Owlvit-large14 model
+Detected window with score 0.36 at box (60.99723815917969, 63.30376052856445, 1073.977294921875, 682.161865234375)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496487.jpg
+3
+Total images with detections: 15 out of 17 for Owlvit-large14 model
+Detected window with score 0.44 at box (1008.5308837890625, 77.30593872070312, 1278.7781982421875, 532.903076171875)
+Detected window with score 0.40 at box (423.7596130371094, 174.81771850585938, 794.1937255859375, 479.99371337890625)
+Detected window with score 0.31 at box (496.300048828125, 213.4989471435547, 578.5045776367188, 446.4623107910156)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\5237818140983496488.jpg
+4
+Total images with detections: 16 out of 17 for Owlvit-large14 model
+Detected window with score 0.36 at box (1118.7391357421875, 126.76918029785156, 1284.321533203125, 494.4267883300781)
+Detected window with score 0.34 at box (260.0046081542969, 164.06370544433594, 873.0526733398438, 482.30908203125)
+Detected window with score 0.32 at box (370.47943115234375, 191.22598266601562, 494.9798583984375, 458.3955383300781)
+Detected window with score 0.31 at box (528.8802490234375, 163.7778778076172, 869.5166625976562, 466.4469909667969)
+Safety decision: STOP
+
+==========================================
+Processing: D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb\glazen-binnendeuren-op-maat.jpg
+0
+No detections to build safety map.
