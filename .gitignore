@@ -32,3 +32,11 @@ output/
 
 # Logs
 *.log
+
+roadmap.txt
+
+# venv
+.venv/
+.venv-wsl/
+.venv-win/
+__pycache__/
