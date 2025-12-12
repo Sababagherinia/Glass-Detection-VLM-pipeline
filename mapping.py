@@ -12,8 +12,8 @@ import pyoctomap as pom
 # ------------------------------------------------------
 # 1) Load RGB and depth image
 # ------------------------------------------------------
-rgb = cv2.imread("/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb/5237818140983496476.jpg", cv2.IMREAD_COLOR)
-depth_raw = cv2.imread("/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/depth/5237818140983496476.jpg_depth.png", cv2.IMREAD_UNCHANGED).astype(np.float32)
+rgb = cv2.imread("data/rgb/5237818140983496476.jpg", cv2.IMREAD_COLOR)
+depth_raw = cv2.imread("data/depth/5237818140983496476.jpg_depth.png", cv2.IMREAD_UNCHANGED).astype(np.float32)
 
 # print(f"Original dtype: {depth_raw.dtype}")
 # print(f"Original shape: {depth_raw.shape}")
@@ -93,7 +93,8 @@ floor_z = np.percentile(z_vals, 5)  # Bottom 5% is likely floor
 print(f"Detected floor at Z = {floor_z:.2f}m")
 
 # Remove statistical outliers (optional but recommended)
-pcd_clean, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+# Less aggressive filtering to preserve more detail
+pcd_clean, _ = pcd.remove_statistical_outlier(nb_neighbors=30, std_ratio=2.5)
 print(f"After outlier removal: {len(pcd_clean.points)} points")
 
 # # o3d.visualization.draw_geometries([pcd])
@@ -102,7 +103,8 @@ print(f"After outlier removal: {len(pcd_clean.points)} points")
 # print(f"Saved point cloud to {output_ply}")
 
 # Also save a downsampled version for faster viewing
-pcd_downsampled = pcd_clean.voxel_down_sample(voxel_size=0.05)  # 5cm voxels
+# Smaller voxel size = more detail preserved
+pcd_downsampled = pcd_clean.voxel_down_sample(voxel_size=0.02)  # 2cm voxels
 # output_ply_down = "/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/output/pointcloud_3d_downsampled_2.ply"
 # o3d.io.write_point_cloud(output_ply_down, pcd_downsampled)
 # print(f"Saved downsampled point cloud ({len(pcd_downsampled.points)} points) to {output_ply_down}")
@@ -122,7 +124,8 @@ pcd_downsampled = pcd_clean.voxel_down_sample(voxel_size=0.05)  # 5cm voxels
 # ------------------------------------------------------
 points = np.asarray(pcd_downsampled.points)
 print(f"Using {points.shape[0]} cleaned points for octree")
-tree = pom.OcTree(0.10)  # 10 cm resolution
+# Smaller resolution = more detail (5cm voxels)
+tree = pom.OcTree(0.05)  # 5 cm resolution
 origin = np.array([0.0, 0.0, 0.0], dtype=float)
 
 # cloud = pom.Pointcloud()
@@ -146,8 +149,8 @@ print("Point cloud insertion complete!")
 # ------------------------------------------------------
 # 6) Save OctoMap
 # ------------------------------------------------------
-tree.writeBinary("/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/trusted_depth_3d_map.bt")
-print("Saved 3D OctoMap as trusted_depth_3d_map.bt")
+tree.writeBinary("output/trusted_depth_v2_3d_map.bt")
+print("Saved 3D OctoMap as trusted_depth_v2_3d_map.bt")
 
 # ------------------------------------------------------
 # 7) Project to 2D occupancy map (if needed)
@@ -190,7 +193,8 @@ for leaf in tree.begin_leafs():
             y_coords.append(y)
 
 # Grid parameters
-resolution_2d = 0.05  # 5cm grid cells for finer detail
+# Smaller cells = more detail for navigation
+resolution_2d = 0.02  # 2cm grid cells for finer detail
 
 if len(x_coords) > 0:
     x_coords = np.array(x_coords)
@@ -217,12 +221,12 @@ if len(x_coords) > 0:
             occupancy_grid[grid_y, grid_x] = 255  # white = occupied
     
     # Save as image (AFTER filling the entire grid)
-    output_2d = "/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/output/occupancy_grid_2d.png"
+    output_2d = "output/occupancy_grid_2d_v2.png"
     cv2.imwrite(output_2d, occupancy_grid)
     print(f"Saved 2D occupancy grid to {output_2d}")
     
     # Also save metadata
-    output_2d_npy = "/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/output/occupancy_grid_2d.npy"
+    output_2d_npy = "output/occupancy_grid_2d_v2.npy"
     np.save(output_2d_npy, {
         'grid': occupancy_grid,
         'resolution': resolution_2d,
@@ -236,14 +240,18 @@ if len(x_coords) > 0:
     
     # Visualize
     import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
     plt.figure(figsize=(12, 10))
-    plt.imshow(occupancy_grid, cmap='gray_r', origin='lower', interpolation='nearest')
-    plt.colorbar(label='Occupancy (0=free, 255=occupied)')
+    colors = ['white', 'lightgreen', 'yellow', 'orange', 'red']
+    n_bins = 256
+    cmap = mcolors.LinearSegmentedColormap.from_list('occupancy', colors, N=n_bins)
+    plt.imshow(occupancy_grid, cmap=cmap, origin='lower', interpolation='nearest', vmin=0, vmax=255)
+    plt.colorbar(label='Occupancy (white=free, red=occupied)')
     plt.xlabel(f'X (grid cells @ {resolution_2d}m resolution)')
     plt.ylabel(f'Y (grid cells @ {resolution_2d}m resolution)')
     plt.title(f'2D Occupancy Grid (Navigation Map)\nHeight: {height_above_floor_min:.1f}-{height_above_floor_max:.1f}m above floor | {len(x_coords)} obstacles')
     plt.tight_layout()
-    output_plot = "/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/output/occupancy_grid_2d_plot.png"
+    output_plot = "output/occupancy_grid_2d_v2_plot.png"
     plt.savefig(output_plot, dpi=150, bbox_inches='tight')
     print(f"Saved visualization to {output_plot}")
 else:

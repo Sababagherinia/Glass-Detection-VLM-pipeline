@@ -1,10 +1,10 @@
 # Minimal dependencies for the RGB-D -> VLM -> mapping pipeline
 torch>=1.13.0
 transformers>=4.30.0
-open3d>=0.18.0
+# open3d>=0.18.0
 Pillow>=9.0.0
 numpy>=1.23.0
 tqdm
-pyoctomap>=1.0.0
+# pyoctomap>=1.0.0
 matplotlib>=3.5.0
 opencv-python>=4.5.0

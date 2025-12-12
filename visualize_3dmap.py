@@ -5,7 +5,7 @@ import numpy as np
 
 # Load the octree
 tree = pom.OcTree(0.1)
-success = tree.readBinary("/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/trusted_depth_3d_map.bt")
+success = tree.readBinary("output/trusted_depth_v2_3d_map.bt")
 
 if not success:
     raise RuntimeError("Failed to read octree file")

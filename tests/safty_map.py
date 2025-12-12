@@ -1,9 +1,9 @@
-from detector import OwlDetectorlarge14
+from detector import OwlDetectorbase32
 from semantic_safety_map import build_safety_map, plot_safety_map
 from PIL import Image, ImageDraw
 import glob
 
-detector = OwlDetectorlarge14()
+detector = OwlDetectorbase32()
 
 # loading a bunch of images with glass objects
 count = 0
