@@ -1,4 +1,6 @@
-"""vlm.py
+"""
+note applicable
+vlm.py
 
 Simple CLIP-style VLM wrapper using Hugging Face `transformers` (CLIPModel + CLIPProcessor).
 

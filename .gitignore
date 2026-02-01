@@ -40,3 +40,32 @@ roadmap.txt
 .venv-wsl/
 .venv-win/
 __pycache__/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Output / artifacts
+output/
+*.ot
+*.ply
+*_vlm_result.png
+*_glass_overlay.png
+*_glass_mask.png
+
+# Data files
+data/
+*.csv
+*.xlsx
+*.h5
+*.hdf5
+*.npy
+*.npz

@@ -1,3 +1,8 @@
+"""
+Docstring for pyoctomap_test
+Simple test script for pyoctomap to create and manipulate an octree.
+"""
+
 import pyoctomap
 import numpy as np
 

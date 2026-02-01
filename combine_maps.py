@@ -1,4 +1,5 @@
 """
+# not done yet
 Combine glass detections with depth-based occupancy grid to create a complete safety map.
 Glass areas detected by VLM are marked as obstacles even if depth sees through them.
 """

@@ -1,4 +1,6 @@
-"""detector.py
+"""
+helper module 
+detector.py
 
 OWL-ViT based open-vocabulary detector wrapper using Hugging Face `transformers`.
 

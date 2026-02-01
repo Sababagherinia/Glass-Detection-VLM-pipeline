@@ -1,3 +1,8 @@
+"""
+Docstring for depth_estimation
+
+Generates depth maps from RGB images using a pre-trained depth estimation model.
+"""
 import os
 import torch
 from transformers import pipeline

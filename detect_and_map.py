@@ -1,4 +1,6 @@
-"""Detect glass regions with a VLM (CLIP) and produce a simple planar map (script version).
+"""
+not done yet
+Detect glass regions with a VLM (CLIP) and produce a simple planar map (script version).
 
 Workflow (single-image):
 - Load RGB image (required). Optional depth image (aligned, same size) can be provided.

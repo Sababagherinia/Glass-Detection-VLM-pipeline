@@ -1,14 +1,9 @@
 """
+not applicable yet
 semantic_safety_map.py
 
 Builds a planar semantic danger map for a UAV using ONLY:
     - OWL-ViT detections (no depth required)
-
-Compatible with your detector output:
-[
-  {"box": (x0, y0, x1, y1), "score": 0.85, "label": "glass door"},
-  {"box": (x0, y0, x1, y1), "score": 0.92, "label": "person"}
-]
 
 Usage:
     from semantic_safety_map import build_safety_map
