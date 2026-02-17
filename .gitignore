@@ -69,3 +69,4 @@ data/
 *.hdf5
 *.npy
 *.npz
+*.pkl
