@@ -104,7 +104,7 @@ import pyoctomap as octomap
 import open3d as o3d
 import numpy as np
 
-BT_FILE = "/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/freiburg1_room.bt"
+BT_FILE = "/mnt/d/uni_vub/thesis/Glass-Detection-VLM-pipeline/output/unified/combined_map.bt"
 OCC_THRESHOLD = 0.5  # occupancy probability
 
 # Load OctoMap
@@ -148,7 +148,7 @@ pcd.colors = o3d.utility.Vector3dVector(colors)
 print(f"Distance range: {min_dist:.2f}m to {max_dist:.2f}m")
 
 # Save to file instead of visualizing (WSL doesn't have display)
-output_file = "freiburg1_room_visualization.ply"
+output_file = "map_unified_file.ply"
 o3d.io.write_point_cloud(output_file, pcd)
 print(f"Saved point cloud with distance colors to {output_file}")
 print(f"Color scheme: Blue (close) -> Green (mid) -> Red (far)")
