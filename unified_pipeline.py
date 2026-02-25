@@ -55,6 +55,14 @@ except ImportError:
     DEPTH_ESTIMATION_AVAILABLE = False
     print("Warning: transformers not available for depth estimation")
 
+# Open3D for live visualization
+try:
+    import open3d as o3d
+    OPEN3D_AVAILABLE = True
+except ImportError:
+    OPEN3D_AVAILABLE = False
+    print("Warning: open3d not available for live visualization. Install with: pip install open3d")
+
 # Import utilities
 from util import (
     load_tum_list,
@@ -128,6 +136,10 @@ class PipelineConfig:
     save_semantic_pickle: bool = True  # save voxel label weights
     save_debug_images: bool = False  # save detection visualizations
     verbose: bool = True
+    
+    # Live visualization
+    live_view: bool = False  # Enable real-time Open3D visualization
+    live_view_update_freq: int = 5  # Update viewer every N frames
 
 
 class UnifiedPipeline:
@@ -181,6 +193,12 @@ class UnifiedPipeline:
             'points_geometric': 0,
             'points_semantic': 0
         }
+        
+        # Live visualization
+        self.vis = None
+        self.pcd = None
+        if self.config.live_view:
+            self._init_live_viewer()
     
     def _init_detector(self):
         """Initialize the object detector."""
@@ -195,6 +213,63 @@ class UnifiedPipeline:
             raise RuntimeError("transformers library required for depth estimation")
         # Depth-Anything-V2-Small from HuggingFace
         return pipeline("depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
+    
+    def _init_live_viewer(self):
+        """Initialize Open3D live visualization window."""
+        if not OPEN3D_AVAILABLE:
+            print("Warning: Open3D not available, live view disabled")
+            self.config.live_view = False
+            return
+        
+        if self.config.verbose:
+            print("Initializing live 3D viewer...")
+        
+        self.vis = o3d.visualization.Visualizer()
+        self.vis.create_window(window_name="Live Map Construction", width=1280, height=720)
+        
+        # Initialize empty point cloud
+        self.pcd = o3d.geometry.PointCloud()
+        self.vis.add_geometry(self.pcd)
+        
+        # Render options
+        opt = self.vis.get_render_option()
+        opt.point_size = 2.0
+        opt.background_color = np.asarray([0.1, 0.1, 0.1])  # Dark gray background
+        
+        self.view_initialized = False
+    
+    def _update_live_viewer(self):
+        """Update the live viewer with current colored points."""
+        if not self.config.live_view or self.vis is None:
+            return
+        
+        # Convert colored_points dict to Open3D point cloud
+        if not self.colored_points:
+            return
+        
+        points = np.array(list(self.colored_points.keys()))
+        colors = np.array(list(self.colored_points.values())) / 255.0  # Normalize to [0,1]
+        
+        self.pcd.points = o3d.utility.Vector3dVector(points)
+        self.pcd.colors = o3d.utility.Vector3dVector(colors)
+        
+        # Update geometry and rendering
+        self.vis.update_geometry(self.pcd)
+        
+        # Reset view on first update to frame the geometry with better zoom
+        if not self.view_initialized and len(points) > 0:
+            self.vis.reset_view_point(True)
+            # Zoom out for better overview
+            ctr = self.vis.get_view_control()
+            ctr.set_zoom(2)  # Zoom out (bigger = more zoomed out)
+            self.view_initialized = True
+        
+        self.vis.poll_events()
+        self.vis.update_renderer()
+        
+        # Brief pause to allow viewer to render (helps visibility during fast processing)
+        import time
+        time.sleep(0.01)
     
     def process_stream(self, dataset_path: Optional[str] = None):
         """
@@ -234,6 +309,14 @@ class UnifiedPipeline:
         
         # Process frames
         self._process_frames(dataset_path, rgb_list, depth_list, gt_list)
+        
+        # Final live viewer update
+        if self.config.live_view:
+            self._update_live_viewer()
+            if self.config.verbose:
+                print("\nLive viewer active. Close the window to continue...")
+            self.vis.run()  # Keep window open until user closes it
+            self.vis.destroy_window()
         
         # Save outputs
         self._save_outputs()
@@ -397,15 +480,15 @@ class UnifiedPipeline:
                 if self.geometric_map is not None:
                     self.geometric_map.insertPointCloud(pts_world_full, origin, self.config.octomap_max_range, False)
                 
-                # Insert into combined map with default green color (background)
+                # Insert into combined map with default white/gray color (background)
                 if self.combined_map is not None:
-                    # Insert points with default green color (will update semantic regions later)
+                    # Insert points with white color for regular geometry
                     for pt in pts_world_full:
                         self.combined_map.updateNode(pt, True)  # occupied
-                        self.combined_map.setNodeColor(pt, 0, 200, 0)  # green background
+                        self.combined_map.integrateNodeColor(pt, 200, 200, 200)  # light gray
                         # Track colored point for PLY export
                         pt_key = (float(pt[0]), float(pt[1]), float(pt[2]))
-                        self.colored_points[pt_key] = (0, 200, 0)
+                        self.colored_points[pt_key] = (200, 200, 200)
                 
                 self.stats['points_geometric'] += len(pts_world_full)
         
@@ -446,13 +529,13 @@ class UnifiedPipeline:
                     voxel_key = world_to_voxel_idx(p, self.config.voxel_resolution)
                     self.semantic_voxels[voxel_key][label] += weight
                 
-                # Update colors in combined map for semantic regions
+                # Update colors in combined map for semantic regions (BRIGHT RED)
                 if self.combined_map is not None:
-                    from util import label_to_color
-                    r, g, b = label_to_color(label)
+                    # Use bright red for detected glass/transparent regions
+                    r, g, b = 255, 0, 0  # Bright red
                     for pt in pts_world:
                         self.combined_map.updateNode(pt, True)
-                        self.combined_map.setNodeColor(pt, r, g, b)
+                        self.combined_map.integrateNodeColor(pt, r, g, b)
                         # Update colored point for PLY export
                         pt_key = (float(pt[0]), float(pt[1]), float(pt[2]))
                         self.colored_points[pt_key] = (r, g, b)
@@ -471,6 +554,10 @@ class UnifiedPipeline:
                 self._save_debug_image(rgb_pil, detections, frame_idx)
         
         self.stats['frames_processed'] += 1
+        
+        # Update live viewer
+        if self.config.live_view and self.stats['frames_processed'] % self.config.live_view_update_freq == 0:
+            self._update_live_viewer()
     
     def _save_debug_image(self, rgb_pil: Image.Image, detections: List[Dict], frame_idx: int):
         """Save RGB image with detection boxes overlaid."""
@@ -498,6 +585,7 @@ class UnifiedPipeline:
         if self.geometric_map is not None:
             self.geometric_map.updateInnerOccupancy()
         if self.combined_map is not None:
+            # Average colors before updating occupancy for ColorOcTree
             self.combined_map.updateInnerOccupancy()
         if self.semantic_only_map is not None:
             self.semantic_only_map.updateInnerOccupancy()
@@ -616,6 +704,14 @@ def parse_args():
         "--quiet", action="store_true",
         help="Suppress verbose output"
     )
+    parser.add_argument(
+        "--live-view", action="store_true",
+        help="Enable real-time 3D visualization with Open3D"
+    )
+    parser.add_argument(
+        "--live-view-freq", type=int, default=5,
+        help="Update live view every N frames (default: 5)"
+    )
     
     return parser.parse_args()
 
@@ -634,7 +730,9 @@ def main():
         detector_model=args.detector,
         detection_threshold=args.threshold,
         save_debug_images=args.debug_images,
-        verbose=not args.quiet
+        verbose=not args.quiet,
+        live_view=args.live_view,
+        live_view_update_freq=args.live_view_freq
     )
     
     # Check dependencies
