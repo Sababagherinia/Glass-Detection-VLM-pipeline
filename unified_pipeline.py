@@ -75,7 +75,8 @@ from util import (
     world_to_voxel_idx,
     label_to_color,
     estimate_depth_from_rgb,
-    estimate_intrinsics_from_image
+    estimate_intrinsics_from_image,
+    quaternion_to_rotation_matrix
 )
 
 
@@ -140,6 +141,9 @@ class PipelineConfig:
     # Live visualization
     live_view: bool = False  # Enable real-time Open3D visualization
     live_view_update_freq: int = 5  # Update viewer every N frames
+    live_view_follow: bool = False  # Follow camera mode: track sensor position
+    live_view_compare: bool = False  # Dual window: geometric vs combined (with detections)
+    live_view_sync: bool = True  # Sync camera views in compare mode (default: True)
 
 
 class UnifiedPipeline:
@@ -197,6 +201,11 @@ class UnifiedPipeline:
         # Live visualization
         self.vis = None
         self.pcd = None
+        # For dual-view comparison mode
+        self.vis_geometric = None
+        self.pcd_geometric = None
+        self.geometric_points = {}  # Geometry-only points (no detections)
+        self.current_camera_pose = None  # For follow mode: (t_world, q_xyzw)
         if self.config.live_view:
             self._init_live_viewer()
     
@@ -222,19 +231,37 @@ class UnifiedPipeline:
             return
         
         if self.config.verbose:
-            print("Initializing live 3D viewer...")
+            if self.config.live_view_compare:
+                print("Initializing dual 3D viewers (comparison mode)...")
+            else:
+                print("Initializing live 3D viewer...")
         
-        self.vis = o3d.visualization.Visualizer()
-        self.vis.create_window(window_name="Live Map Construction", width=1280, height=720)
-        
-        # Initialize empty point cloud
-        self.pcd = o3d.geometry.PointCloud()
-        self.vis.add_geometry(self.pcd)
-        
-        # Render options
-        opt = self.vis.get_render_option()
-        opt.point_size = 2.0
-        opt.background_color = np.asarray([0.1, 0.1, 0.1])  # Dark gray background
+        if self.config.live_view_compare:
+            # Dual window mode: geometric (left) and combined (right)
+            self.vis_geometric = o3d.visualization.Visualizer()
+            self.vis_geometric.create_window(window_name="Geometric Map (No Detections)", width=640, height=720, left=0, top=0)
+            self.pcd_geometric = o3d.geometry.PointCloud()
+            self.vis_geometric.add_geometry(self.pcd_geometric)
+            opt1 = self.vis_geometric.get_render_option()
+            opt1.point_size = 3.0
+            opt1.background_color = np.asarray([0.1, 0.1, 0.1])
+            
+            self.vis = o3d.visualization.Visualizer()
+            self.vis.create_window(window_name="Combined Map (With Detections)", width=640, height=720, left=650, top=0)
+            self.pcd = o3d.geometry.PointCloud()
+            self.vis.add_geometry(self.pcd)
+            opt2 = self.vis.get_render_option()
+            opt2.point_size = 3.0
+            opt2.background_color = np.asarray([0.1, 0.1, 0.1])
+        else:
+            # Single window mode
+            self.vis = o3d.visualization.Visualizer()
+            self.vis.create_window(window_name="Live Map Construction", width=1280, height=720)
+            self.pcd = o3d.geometry.PointCloud()
+            self.vis.add_geometry(self.pcd)
+            opt = self.vis.get_render_option()
+            opt.point_size = 3.0
+            opt.background_color = np.asarray([0.5, 0.5, 0.5])
         
         self.view_initialized = False
     
@@ -243,31 +270,130 @@ class UnifiedPipeline:
         if not self.config.live_view or self.vis is None:
             return
         
-        # Convert colored_points dict to Open3D point cloud
+        if self.config.live_view_compare:
+            # Dual window mode: update both views
+            self._update_dual_viewers()
+        else:
+            # Single window mode
+            self._update_single_viewer()
+    
+    def _update_single_viewer(self):
+        """Update single window view."""
         if not self.colored_points:
+            if self.config.verbose and self.stats['frames_processed'] <= 3:
+                print(f"  [Live View] No points yet (frame {self.stats['frames_processed']})")
             return
         
         points = np.array(list(self.colored_points.keys()))
-        colors = np.array(list(self.colored_points.values())) / 255.0  # Normalize to [0,1]
+        colors = np.array(list(self.colored_points.values())) / 255.0
+        
+        if self.config.verbose and self.stats['frames_processed'] <= 3:
+            print(f"  [Live View] Updating with {len(points)} points")
         
         self.pcd.points = o3d.utility.Vector3dVector(points)
         self.pcd.colors = o3d.utility.Vector3dVector(colors)
-        
-        # Update geometry and rendering
         self.vis.update_geometry(self.pcd)
         
         # Reset view on first update to frame the geometry with better zoom
         if not self.view_initialized and len(points) > 0:
-            self.vis.reset_view_point(True)
-            # Zoom out for better overview
-            ctr = self.vis.get_view_control()
-            ctr.set_zoom(2)  # Zoom out (bigger = more zoomed out)
+            if not self.config.live_view_follow:
+                # Static view mode
+                self.vis.reset_view_point(True)
+                # Zoom out for better overview
+                ctr = self.vis.get_view_control()
+                ctr.set_zoom(2)  # Zoom out (bigger = more zoomed out)
+            else:
+                # Follow mode: do initial reset but we'll override it immediately after
+                self.vis.reset_view_point(True)
             self.view_initialized = True
         
-        self.vis.poll_events()
-        self.vis.update_renderer()
+        # Follow camera mode: update camera to track sensor position
+        if self.config.live_view_follow and self.current_camera_pose is not None:
+            t_world, q_xyzw = self.current_camera_pose
+            ctr = self.vis.get_view_control()
+            
+            # Convert quaternion to rotation matrix for camera orientation
+            R = quaternion_to_rotation_matrix(q_xyzw)
+            
+            # Camera coordinate system: X=right, Y=down, Z=forward (into scene)
+            # Forward direction: where the sensor is looking
+            forward_dir = R @ np.array([0, 0, 1])
+            
+            # Up direction in world frame
+            up_dir = R @ np.array([0, -1, 0])
+            
+            # Position viewer camera BEHIND the sensor so we can see what it captures
+            # Offset camera back by 0.5m and slightly up for better view
+            back_offset = 0.0
+            up_offset = 0.0
+            cam_pos = t_world + forward_dir * back_offset + up_dir * (-up_offset)
+            
+            # Look at point ahead of the sensor (where sensor is looking)
+            lookat = t_world + forward_dir * 2.0
+            
+            # Debug output on first few updates
+            if self.stats['frames_processed'] <= 3 and self.config.verbose:
+                print(f"  [Follow Cam] Sensor pos: {t_world}, lookat: {lookat}")
+                print(f"  [Follow Cam] Points in cloud: {len(points)}")
+            
+            # Set camera parameters
+            ctr.set_lookat(lookat)
+            ctr.set_front(forward_dir)  # View direction from camera
+            ctr.set_up(-up_dir)  # Up is opposite of down vector
+            ctr.set_zoom(0.7)  # Adjust zoom for good visibility
         
-        # Brief pause to allow viewer to render (helps visibility during fast processing)
+        if not self.config.live_view_follow:
+            self.vis.poll_events()
+            self.vis.update_renderer()
+        else:
+            # Follow mode updates handled above
+            self.vis.poll_events()
+            self.vis.update_renderer()
+        
+        # Brief pause to allow viewer to render
+        import time
+        time.sleep(0.01)
+    
+    def _update_dual_viewers(self):
+        """Update both geometric and combined viewers."""
+        if not self.geometric_points and not self.colored_points:
+            return
+        
+        # Update geometric window (gray points, no detections)
+        if self.geometric_points and self.vis_geometric:
+            geo_points = np.array(list(self.geometric_points.keys()))
+            geo_colors = np.array(list(self.geometric_points.values())) / 255.0
+            self.pcd_geometric.points = o3d.utility.Vector3dVector(geo_points)
+            self.pcd_geometric.colors = o3d.utility.Vector3dVector(geo_colors)
+            self.vis_geometric.update_geometry(self.pcd_geometric)
+            
+            if not self.view_initialized:
+                self.vis_geometric.reset_view_point(True)
+                ctr = self.vis_geometric.get_view_control()
+                ctr.set_zoom(2.0)
+        
+        # Update combined window (with red detections)
+        if self.colored_points and self.vis:
+            combined_points = np.array(list(self.colored_points.keys()))
+            combined_colors = np.array(list(self.colored_points.values())) / 255.0
+            self.pcd.points = o3d.utility.Vector3dVector(combined_points)
+            self.pcd.colors = o3d.utility.Vector3dVector(combined_colors)
+            self.vis.update_geometry(self.pcd)
+            
+            if not self.view_initialized:
+                self.vis.reset_view_point(True)
+                ctr = self.vis.get_view_control()
+                ctr.set_zoom(2.0)
+                self.view_initialized = True
+        
+        # Poll and render both windows
+        if self.vis_geometric:
+            self.vis_geometric.poll_events()
+            self.vis_geometric.update_renderer()
+        if self.vis:
+            self.vis.poll_events()
+            self.vis.update_renderer()
+        
         import time
         time.sleep(0.01)
     
@@ -314,9 +440,51 @@ class UnifiedPipeline:
         if self.config.live_view:
             self._update_live_viewer()
             if self.config.verbose:
-                print("\nLive viewer active. Close the window to continue...")
-            self.vis.run()  # Keep window open until user closes it
-            self.vis.destroy_window()
+                if self.config.live_view_compare:
+                    print("\nLive viewers active. Close any window to continue...")
+                else:
+                    print("\nLive viewer active. Close the window to continue...")
+            
+            # Run and destroy windows
+            if self.config.live_view_compare:
+                # Dual window mode - run both in non-blocking loop
+                if self.config.verbose and self.config.live_view_sync:
+                    print("  Camera views are synchronized. Move one to move both!")
+                
+                last_view_params = None
+                while self.vis_geometric and self.vis:
+                    # Poll both windows
+                    if not self.vis_geometric.poll_events():
+                        break
+                    if not self.vis.poll_events():
+                        break
+                    
+                    # Synchronize camera views if enabled
+                    if self.config.live_view_sync:
+                        # Get camera parameters from left window (geometric)
+                        ctr_geo = self.vis_geometric.get_view_control()
+                        ctr_combined = self.vis.get_view_control()
+                        
+                        # Extract camera parameters
+                        cam_params_geo = ctr_geo.convert_to_pinhole_camera_parameters()
+                        
+                        # Apply to combined window
+                        ctr_combined.convert_from_pinhole_camera_parameters(cam_params_geo)
+                    
+                    self.vis_geometric.update_renderer()
+                    self.vis.update_renderer()
+                    import time
+                    time.sleep(0.01)
+                
+                # Cleanup
+                if self.vis_geometric:
+                    self.vis_geometric.destroy_window()
+                if self.vis:
+                    self.vis.destroy_window()
+            else:
+                # Single window mode
+                self.vis.run()
+                self.vis.destroy_window()
         
         # Save outputs
         self._save_outputs()
@@ -485,10 +653,13 @@ class UnifiedPipeline:
                     # Insert points with white color for regular geometry
                     for pt in pts_world_full:
                         self.combined_map.updateNode(pt, True)  # occupied
-                        self.combined_map.integrateNodeColor(pt, 200, 200, 200)  # light gray
+                        self.combined_map.integrateNodeColor(pt, 144, 238, 180)  # light green
                         # Track colored point for PLY export
                         pt_key = (float(pt[0]), float(pt[1]), float(pt[2]))
-                        self.colored_points[pt_key] = (200, 200, 200)
+                        self.colored_points[pt_key] = (144, 238, 180)
+                        # Also track in geometric-only view (for comparison mode)
+                        if self.config.live_view_compare:
+                            self.geometric_points[pt_key] = (200, 200, 200)  # gray for geometric
                 
                 self.stats['points_geometric'] += len(pts_world_full)
         
@@ -554,6 +725,10 @@ class UnifiedPipeline:
                 self._save_debug_image(rgb_pil, detections, frame_idx)
         
         self.stats['frames_processed'] += 1
+        
+        # Store current camera pose for follow mode
+        if self.config.live_view_follow:
+            self.current_camera_pose = (t_world, q_xyzw)
         
         # Update live viewer
         if self.config.live_view and self.stats['frames_processed'] % self.config.live_view_update_freq == 0:
@@ -712,6 +887,18 @@ def parse_args():
         "--live-view-freq", type=int, default=5,
         help="Update live view every N frames (default: 5)"
     )
+    parser.add_argument(
+        "--follow-camera", action="store_true",
+        help="Follow camera mode: viewer tracks sensor position (requires --live-view)"
+    )
+    parser.add_argument(
+        "--compare-view", action="store_true",
+        help="Dual window comparison: show geometric map vs combined map side by side (requires --live-view)"
+    )
+    parser.add_argument(
+        "--no-sync", action="store_true",
+        help="Disable camera synchronization in compare-view mode (allows independent camera control)"
+    )
     
     return parser.parse_args()
 
@@ -732,7 +919,10 @@ def main():
         save_debug_images=args.debug_images,
         verbose=not args.quiet,
         live_view=args.live_view,
-        live_view_update_freq=args.live_view_freq
+        live_view_update_freq=args.live_view_freq,
+        live_view_follow=args.follow_camera,
+        live_view_compare=args.compare_view,
+        live_view_sync=not args.no_sync  # Default to synced unless --no-sync is used
     )
     
     # Check dependencies

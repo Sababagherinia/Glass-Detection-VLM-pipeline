@@ -179,6 +179,19 @@ def transform_points(pts_cam: np.ndarray, t_world: np.ndarray, q_xyzw: np.ndarra
     return pts_world
 
 
+def quaternion_to_rotation_matrix(q_xyzw: np.ndarray) -> np.ndarray:
+    """
+    Convert quaternion to 3x3 rotation matrix.
+    
+    Args:
+        q_xyzw: Quaternion in xyzw format (4,)
+        
+    Returns:
+        Rotation matrix (3, 3)
+    """
+    return R.from_quat(q_xyzw).as_matrix()
+
+
 def bbox_points_cam(depth_m: np.ndarray, box: Tuple[float, float, float, float],
                    fx: float, fy: float, cx: float, cy: float,
                    stride: int = 4, z_min: float = 0.2, z_max: float = 4.0,
