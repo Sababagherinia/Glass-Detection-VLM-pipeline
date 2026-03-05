@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers import OwlViTProcessor, OwlViTForObjectDetection
-# from nanoowl.owl_predictor import OwlPredictor
+from nanoowl.owl_predictor import OwlPredictor
 
 
 class OwlDetectorbase32:
@@ -55,6 +55,35 @@ class OwlDetectorbase32:
         return detections
 
 # class NanoOwlDetector:
+#     def __init__(self, model_name: str = "google/owlvit-base-patch32", device: str | None = None):
+#         if device is None:
+#             device = "cuda" if torch.cuda.is_available() else "cpu"
+#         self.device = device
+#         self.model = OwlPredictor(model_name=model_name, device=device)
+
+#     def detect(self, image: Image.Image, queries: List[str], threshold: float = 0.3) -> List[Dict[str, Any]]:
+#         """Run open-vocabulary detection for the provided queries on the image.
+
+#         Returns a list of detection dictionaries: {"box": (x0,y0,x1,y1), "score": float, "label": str}
+#         """
+#         results = self.model.predict(image=image, queries=queries, threshold=threshold)
+
+#         detections: List[Dict[str, Any]] = []
+#         for res in results:
+#             box = res.get("box")
+#             score = res.get("score")
+#             label = res.get("label")
+#             if box is None or score is None or label is None:
+#                 continue
+#             detections.append({"box": tuple(map(float, box)), "score": float(score), "label": label})
+
+#         # sort by score desc
+#         detections.sort(key=lambda x: x["score"], reverse=True)
+#         return detections
+#     predictor = OwlPredictor(
+#     "google/owlvit-base-patch32",
+#     image_encoder_engine="data/owlvit-base-patch32-image-encoder.engine"
+# )
 
 # class Dinov2Detector:
 #     def __init__(self, model_name: str = "facebook/dinov2-small-imagenet1k-1-layer", device: str | None = None):
@@ -139,3 +168,4 @@ class OwlDetectorlarge14:
         # sort by score desc
         detections.sort(key=lambda x: x["score"], reverse=True)
         return detections
+    

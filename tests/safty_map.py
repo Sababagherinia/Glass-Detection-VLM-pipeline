@@ -1,13 +1,18 @@
-from detector import OwlDetectorbase32
+import sys
+import os
+# Add parent directory to path to import modules from root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from detector import OwlDetectorbase32, NanoOwlDetector
 from semantic_safety_map import build_safety_map, plot_safety_map
 from PIL import Image, ImageDraw
 import glob
 
-detector = OwlDetectorbase32()
+detector = NanoOwlDetector()
 
 # loading a bunch of images with glass objects
 count = 0
-for path in glob.glob("D:/uni_vub/thesis/Glass-Detection-VLM-pipeline/data/rgb/*"):
+for path in glob.glob("/home/saba/projects/Glass-Detection-VLM-pipeline/data/rgb/*"):
     print("\n==========================================")
     print(f"Processing: {path}")
     img = Image.open(path).convert("RGB")

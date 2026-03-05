@@ -912,6 +912,7 @@ def main():
         dataset_dir=args.dataset,
         output_dir=args.output,
         use_real_depth=not args.estimate_depth,
+        depth_source_auto_detect=not args.estimate_depth,  # Disable auto-detect when forcing estimation
         frame_step=args.frame_step,
         max_frames=args.max_frames,
         detector_model=args.detector,

@@ -327,23 +327,45 @@ def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
     Args:
         rgb_image: PIL RGB image
         pipe: HuggingFace depth estimation pipeline
-        min_depth: Minimum depth in meters
-        max_depth: Maximum depth in meters
+        min_depth: Minimum depth in meters (used for clipping)
+        max_depth: Maximum depth in meters (used for clipping)
         
     Returns:
         Depth map in meters (H, W) as float32
     """
-    # Run inference
-    depth_output = pipe(rgb_image)["depth"]
+    # Run inference - returns dict with "depth" and "predicted_depth" keys
+    result = pipe(rgb_image)
     
-    # Convert PIL depth image to numpy
-    depth_raw = np.array(depth_output, dtype=np.float32)
+    # Try to get the raw depth prediction (not the visualization)
+    if "predicted_depth" in result:
+        depth_tensor = result["predicted_depth"]
+        # Convert tensor to numpy if needed
+        if hasattr(depth_tensor, 'numpy'):
+            depth_raw = depth_tensor.cpu().numpy()
+        elif hasattr(depth_tensor, 'cpu'):
+            depth_raw = depth_tensor.cpu().detach().numpy()
+        else:
+            depth_raw = np.array(depth_tensor, dtype=np.float32)
+        
+        # Remove batch dimension if present
+        if depth_raw.ndim == 3:
+            depth_raw = depth_raw[0]
+    else:
+        # Fallback to the "depth" key (PIL image)
+        depth_output = result["depth"]
+        depth_raw = np.array(depth_output, dtype=np.float32)
     
-    # Normalize and convert to metric depth
-    # Depth-Anything outputs inverted depth (bright=close, dark=far)
-    depth_norm = depth_raw / 255.0
-    inverse_depth = depth_norm + 1e-6
-    depth_m = min_depth + (max_depth - min_depth) * (1.0 - inverse_depth)
+    # Depth-Anything V2 outputs relative depth in arbitrary units
+    # The model outputs are roughly proportional to actual depth but need scaling
+    # We'll use a fixed scale factor and then clip to reasonable range
+    
+    # Apply a scale factor (empirically tuned for Depth-Anything V2)
+    # Typical output range is 0-10, we want 0.3-5m, so scale by ~0.5
+    scale_factor = 0.5
+    depth_m = depth_raw * scale_factor
+    
+    # Clip to valid depth range
+    depth_m = np.clip(depth_m, min_depth, max_depth)
     
     return depth_m
 
