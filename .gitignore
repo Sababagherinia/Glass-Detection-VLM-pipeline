@@ -26,7 +26,8 @@ output/
 *_vlm_result.png
 *_glass_overlay.png
 *_glass_mask.png
-
+*.png
+*.jpg
 # Jupyter
 .ipynb_checkpoints/
 
@@ -70,3 +71,4 @@ data/
 *.npy
 *.npz
 *.pkl
+*.json

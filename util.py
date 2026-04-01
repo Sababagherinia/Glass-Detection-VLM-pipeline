@@ -319,8 +319,9 @@ def export_colored_points_to_ply(colored_points: dict, ply_path: str):
     print(f"Exported colored PLY: {ply_path} ({len(colored_points)} points)")
 
 
-def estimate_depth_from_rgb(rgb_image: Image.Image, pipe, 
-                            min_depth: float = 0.3, max_depth: float = 5.0) -> np.ndarray:
+def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
+                            min_depth: float = 0.3, max_depth: float = 5.0,
+                            scale_factor: float = 1.0) -> np.ndarray:
     """
     Estimate depth from RGB image using Depth-Anything model.
     
@@ -329,6 +330,7 @@ def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
         pipe: HuggingFace depth estimation pipeline
         min_depth: Minimum depth in meters (used for clipping)
         max_depth: Maximum depth in meters (used for clipping)
+        scale_factor: Global multiplier applied to estimated depth before clipping
         
     Returns:
         Depth map in meters (H, W) as float32
@@ -355,14 +357,8 @@ def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
         depth_output = result["depth"]
         depth_raw = np.array(depth_output, dtype=np.float32)
     
-    # Depth-Anything V2 outputs relative depth in arbitrary units
-    # The model outputs are roughly proportional to actual depth but need scaling
-    # We'll use a fixed scale factor and then clip to reasonable range
-    
-    # Apply a scale factor (empirically tuned for Depth-Anything V2)
-    # Typical output range is 0-10, we want 0.3-5m, so scale by ~0.5
-    scale_factor = 0.5
-    depth_m = depth_raw * scale_factor
+    # Metric Depth-Anything V2 model outputs depth in meters.
+    depth_m = depth_raw * float(scale_factor)
     
     # Clip to valid depth range
     depth_m = np.clip(depth_m, min_depth, max_depth)

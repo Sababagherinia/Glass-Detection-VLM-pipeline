@@ -107,6 +107,12 @@ class PipelineConfig:
     depth_min: float = 0.2  # meters
     depth_max: float = 4.0  # meters
     point_stride: int = 4  # sample every Nth pixel
+    monocular_depth_scale: float = 1.0  # global multiplier for estimated monocular depth
+
+    # Monocular scale updater placeholders (future use)
+    enable_scale_updater: bool = False
+    scale_updater_mode: str = "none"  # placeholder: none|floor|object|ema
+    scale_ema_alpha: float = 0.02
     
     # Detection parameters
     detection_queries: List[str] = field(default_factory=lambda: [
@@ -160,6 +166,8 @@ class UnifiedPipeline:
     def __init__(self, config: PipelineConfig):
         """Initialize the pipeline with configuration."""
         self.config = config
+        self.current_mono_depth_scale = float(self.config.monocular_depth_scale)
+        self._scale_updater_notice_printed = False
         
         # Initialize detector
         if self.config.verbose:
@@ -171,6 +179,7 @@ class UnifiedPipeline:
         if not self.config.use_real_depth:
             if self.config.verbose:
                 print("Initializing depth estimation model...")
+                print(f"Monocular depth scale: {self.current_mono_depth_scale:.4f}")
             self.depth_estimator = self._init_depth_estimator()
         
         # Initialize OctoMaps
@@ -220,8 +229,8 @@ class UnifiedPipeline:
         """Initialize depth estimation model for monocular RGB."""
         if not DEPTH_ESTIMATION_AVAILABLE:
             raise RuntimeError("transformers library required for depth estimation")
-        # Depth-Anything-V2-Small from HuggingFace
-        return pipeline("depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
+        # Depth-Anything-V2 metric indoor model from HuggingFace
+        return pipeline("depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Indoor-large-hf")
     
     def _init_live_viewer(self):
         """Initialize Open3D live visualization window."""
@@ -264,6 +273,20 @@ class UnifiedPipeline:
             opt.background_color = np.asarray([0.5, 0.5, 0.5])
         
         self.view_initialized = False
+
+    def _update_monocular_scale_placeholder(self, rgb_pil: Image.Image, depth_m: np.ndarray, frame_idx: int) -> float:
+        """
+        Placeholder hook for future online scale updaters.
+
+        Current behavior intentionally keeps a fixed user-provided scale.
+        """
+        if self.config.enable_scale_updater and not self._scale_updater_notice_printed and self.config.verbose:
+            print(
+                f"Scale updater placeholder active (mode={self.config.scale_updater_mode}, "
+                f"ema_alpha={self.config.scale_ema_alpha}). Using fixed scale for now."
+            )
+            self._scale_updater_notice_printed = True
+        return self.current_mono_depth_scale
     
     def _update_live_viewer(self):
         """Update the live viewer with current colored points."""
@@ -511,8 +534,10 @@ class UnifiedPipeline:
         
         # Estimate depth if not provided
         if depth is None and self.depth_estimator:
+            self.current_mono_depth_scale = self._update_monocular_scale_placeholder(rgb_pil, None, 0)
             depth = estimate_depth_from_rgb(rgb_pil, self.depth_estimator,
-                                           self.config.depth_min, self.config.depth_max)
+                                           self.config.depth_min, self.config.depth_max,
+                                           scale_factor=self.current_mono_depth_scale)
         
         if depth is None:
             raise ValueError("No depth data provided or estimated")
@@ -599,8 +624,10 @@ class UnifiedPipeline:
                         depth_m = depth_raw.astype(np.float32) / self.config.depth_scale
             elif self.depth_estimator:
                 # Estimate depth from RGB
+                self.current_mono_depth_scale = self._update_monocular_scale_placeholder(rgb_pil, None, i)
                 depth_m = estimate_depth_from_rgb(rgb_pil, self.depth_estimator, 
-                                                 self.config.depth_min, self.config.depth_max)
+                                                 self.config.depth_min, self.config.depth_max,
+                                                 scale_factor=self.current_mono_depth_scale)
             
             if depth_m is None:
                 if self.config.verbose:
@@ -855,6 +882,23 @@ def parse_args():
         help="Estimate depth from RGB (ignore real depth data)"
     )
     parser.add_argument(
+        "--mono-depth-scale", type=float, default=1.0,
+        help="Global multiplier for monocular estimated depth (default: 1.0)"
+    )
+    parser.add_argument(
+        "--enable-scale-updater", action="store_true",
+        help="Enable placeholder hook for future online monocular scale updater"
+    )
+    parser.add_argument(
+        "--scale-updater", type=str, default="none",
+        choices=["none", "floor", "object", "ema"],
+        help="Placeholder updater mode for future online scale adaptation"
+    )
+    parser.add_argument(
+        "--scale-ema-alpha", type=float, default=0.02,
+        help="Placeholder EMA alpha for future updater (default: 0.02)"
+    )
+    parser.add_argument(
         "--frame-step", type=int, default=5,
         help="Process every Nth frame (default: 5)"
     )
@@ -913,6 +957,10 @@ def main():
         output_dir=args.output,
         use_real_depth=not args.estimate_depth,
         depth_source_auto_detect=not args.estimate_depth,  # Disable auto-detect when forcing estimation
+        monocular_depth_scale=args.mono_depth_scale,
+        enable_scale_updater=args.enable_scale_updater,
+        scale_updater_mode=args.scale_updater,
+        scale_ema_alpha=args.scale_ema_alpha,
         frame_step=args.frame_step,
         max_frames=args.max_frames,
         detector_model=args.detector,
