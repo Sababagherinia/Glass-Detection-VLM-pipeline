@@ -107,7 +107,14 @@ class PipelineConfig:
     depth_min: float = 0.2  # meters
     depth_max: float = 4.0  # meters
     point_stride: int = 4  # sample every Nth pixel
+    depth_model: str = "da2"  # da2|da3
     monocular_depth_scale: float = 1.0  # global multiplier for estimated monocular depth
+
+    # Depth nonlinearity correction (depth-dependent scaling)
+    enable_depth_dependent_scale: bool = False  # enable nonlinear depth correction
+    scale_near: float = 1.3088  # scale factor at near depth (Freiburg1 calibration)
+    scale_far: float = 0.9184   # scale factor at far depth (Freiburg1 calibration)
+    scale_depth_range: float = 3.0  # depth range for linear interpolation (meters)
 
     # Monocular scale updater placeholders (future use)
     enable_scale_updater: bool = False
@@ -168,6 +175,7 @@ class UnifiedPipeline:
         self.config = config
         self.current_mono_depth_scale = float(self.config.monocular_depth_scale)
         self._scale_updater_notice_printed = False
+        self.depth_backend = self.config.depth_model
         
         # Initialize detector
         if self.config.verbose:
@@ -227,10 +235,45 @@ class UnifiedPipeline:
     
     def _init_depth_estimator(self):
         """Initialize depth estimation model for monocular RGB."""
+        if self.config.depth_model == "da3":
+            try:
+                import torch
+                from depth_anything_3.api import DepthAnything3  # type: ignore[import-not-found]
+
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                model = DepthAnything3.from_pretrained("depth-anything/DA3METRIC-LARGE").to(device=device)
+                if self.config.verbose:
+                    print("Using Depth Anything 3 metric model (DA3METRIC-LARGE)")
+                return {"backend": "da3", "model": model}
+            except Exception as exc:
+                raise RuntimeError(f"DA3 requested but could not be initialized: {exc}") from exc
+
         if not DEPTH_ESTIMATION_AVAILABLE:
             raise RuntimeError("transformers library required for depth estimation")
-        # Depth-Anything-V2 metric indoor model from HuggingFace
-        return pipeline("depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Indoor-large-hf")
+        if self.config.verbose:
+            print("Using Depth Anything V2 metric model")
+        return pipeline("depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Indoor-small-hf")
+
+    def _estimate_depth_quick(self, rgb_pil: Image.Image) -> np.ndarray:
+        """Estimate depth with the active backend (DA2 default, DA3 opt-in)."""
+        if self.depth_backend == "da3":
+            pred = self.depth_estimator["model"].inference([np.array(rgb_pil)])
+            depth_m = np.asarray(pred.depth[0], dtype=np.float32)
+            depth_m = depth_m * float(self.current_mono_depth_scale)
+            depth_m = np.clip(depth_m, self.config.depth_min, self.config.depth_max)
+            return depth_m
+
+        return estimate_depth_from_rgb(
+            rgb_pil,
+            self.depth_estimator,
+            self.config.depth_min,
+            self.config.depth_max,
+            scale_factor=self.current_mono_depth_scale,
+            enable_depth_dependent_scale=self.config.enable_depth_dependent_scale,
+            scale_near=self.config.scale_near,
+            scale_far=self.config.scale_far,
+            scale_depth_range=self.config.scale_depth_range,
+        )
     
     def _init_live_viewer(self):
         """Initialize Open3D live visualization window."""
@@ -535,9 +578,7 @@ class UnifiedPipeline:
         # Estimate depth if not provided
         if depth is None and self.depth_estimator:
             self.current_mono_depth_scale = self._update_monocular_scale_placeholder(rgb_pil, None, 0)
-            depth = estimate_depth_from_rgb(rgb_pil, self.depth_estimator,
-                                           self.config.depth_min, self.config.depth_max,
-                                           scale_factor=self.current_mono_depth_scale)
+            depth = self._estimate_depth_quick(rgb_pil)
         
         if depth is None:
             raise ValueError("No depth data provided or estimated")
@@ -625,9 +666,7 @@ class UnifiedPipeline:
             elif self.depth_estimator:
                 # Estimate depth from RGB
                 self.current_mono_depth_scale = self._update_monocular_scale_placeholder(rgb_pil, None, i)
-                depth_m = estimate_depth_from_rgb(rgb_pil, self.depth_estimator, 
-                                                 self.config.depth_min, self.config.depth_max,
-                                                 scale_factor=self.current_mono_depth_scale)
+                depth_m = self._estimate_depth_quick(rgb_pil)
             
             if depth_m is None:
                 if self.config.verbose:
@@ -882,6 +921,11 @@ def parse_args():
         help="Estimate depth from RGB (ignore real depth data)"
     )
     parser.add_argument(
+        "--depth-model", type=str, default="da2",
+        choices=["da2", "da3"],
+        help="Depth model to use for monocular estimation (default: da2)"
+    )
+    parser.add_argument(
         "--mono-depth-scale", type=float, default=1.0,
         help="Global multiplier for monocular estimated depth (default: 1.0)"
     )
@@ -897,6 +941,22 @@ def parse_args():
     parser.add_argument(
         "--scale-ema-alpha", type=float, default=0.02,
         help="Placeholder EMA alpha for future updater (default: 0.02)"
+    )
+    parser.add_argument(
+        "--enable-depth-dependent-scale", action="store_true",
+        help="Enable depth-dependent nonlinear scale correction (fixes geometry distortion)"
+    )
+    parser.add_argument(
+        "--scale-near", type=float, default=1.3088,
+        help="Scale factor at near depth (d=0) for depth-dependent correction (default: 1.3088)"
+    )
+    parser.add_argument(
+        "--scale-far", type=float, default=0.9184,
+        help="Scale factor at far depth for depth-dependent correction (default: 0.9184)"
+    )
+    parser.add_argument(
+        "--scale-depth-range", type=float, default=3.0,
+        help="Depth range for linear interpolation in depth-dependent correction (default: 3.0m)"
     )
     parser.add_argument(
         "--frame-step", type=int, default=5,
@@ -957,10 +1017,15 @@ def main():
         output_dir=args.output,
         use_real_depth=not args.estimate_depth,
         depth_source_auto_detect=not args.estimate_depth,  # Disable auto-detect when forcing estimation
+        depth_model=args.depth_model,
         monocular_depth_scale=args.mono_depth_scale,
         enable_scale_updater=args.enable_scale_updater,
         scale_updater_mode=args.scale_updater,
         scale_ema_alpha=args.scale_ema_alpha,
+        enable_depth_dependent_scale=args.enable_depth_dependent_scale,
+        scale_near=args.scale_near,
+        scale_far=args.scale_far,
+        scale_depth_range=args.scale_depth_range,
         frame_step=args.frame_step,
         max_frames=args.max_frames,
         detector_model=args.detector,

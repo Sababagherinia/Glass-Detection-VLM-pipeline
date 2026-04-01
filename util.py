@@ -319,9 +319,45 @@ def export_colored_points_to_ply(colored_points: dict, ply_path: str):
     print(f"Exported colored PLY: {ply_path} ({len(colored_points)} points)")
 
 
+def apply_depth_dependent_scale(depth_map: np.ndarray, 
+                               scale_near: float = 1.3088, 
+                               scale_far: float = 0.9184,
+                               depth_max: float = 3.0) -> np.ndarray:
+    """
+    Apply depth-dependent scaling to correct monocular depth nonlinearity.
+    
+    Uses linear interpolation: scale(d) = scale_near - (scale_near - scale_far) * (d / depth_max)
+    This corrects models that underestimate near depth more than far depth.
+    
+    Args:
+        depth_map: Input depth map in meters (H, W)
+        scale_near: Scale factor at d=0 (default 1.3088 from Freiburg1 calibration)
+        scale_far: Scale factor at d=depth_max (default 0.9184)
+        depth_max: Depth range for interpolation (default 3.0m)
+        
+    Returns:
+        Scaled depth map in meters (H, W)
+    """
+    # Compute per-pixel scale based on depth
+    # scale(d) = scale_near + (scale_far - scale_near) * (d / depth_max)
+    scales = scale_near + (scale_far - scale_near) * (depth_map / depth_max)
+    
+    # Clamp scales to reasonable range (avoid extreme values outside training bounds)
+    scales = np.clip(scales, 0.5, 2.0)
+    
+    # Apply per-pixel scaling
+    scaled_depth = depth_map * scales
+    
+    return scaled_depth
+
+
 def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
                             min_depth: float = 0.3, max_depth: float = 5.0,
-                            scale_factor: float = 1.0) -> np.ndarray:
+                            scale_factor: float = 1.0,
+                            enable_depth_dependent_scale: bool = False,
+                            scale_near: float = 1.3088,
+                            scale_far: float = 0.9184,
+                            scale_depth_range: float = 3.0) -> np.ndarray:
     """
     Estimate depth from RGB image using Depth-Anything model.
     
@@ -331,6 +367,10 @@ def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
         min_depth: Minimum depth in meters (used for clipping)
         max_depth: Maximum depth in meters (used for clipping)
         scale_factor: Global multiplier applied to estimated depth before clipping
+        enable_depth_dependent_scale: If True, apply depth-dependent nonlinear correction
+        scale_near: Scale factor at d=0 for depth-dependent scaling
+        scale_far: Scale factor at d=scale_depth_range for depth-dependent scaling
+        scale_depth_range: Depth range for interpolation in depth-dependent scaling
         
     Returns:
         Depth map in meters (H, W) as float32
@@ -358,7 +398,13 @@ def estimate_depth_from_rgb(rgb_image: Image.Image, pipe,
         depth_raw = np.array(depth_output, dtype=np.float32)
     
     # Metric Depth-Anything V2 model outputs depth in meters.
-    depth_m = depth_raw * float(scale_factor)
+    if enable_depth_dependent_scale:
+        # First apply global scale, then depth-dependent correction
+        depth_m = depth_raw * float(scale_factor)
+        depth_m = apply_depth_dependent_scale(depth_m, scale_near, scale_far, scale_depth_range)
+    else:
+        # Simple global scaling
+        depth_m = depth_raw * float(scale_factor)
     
     # Clip to valid depth range
     depth_m = np.clip(depth_m, min_depth, max_depth)

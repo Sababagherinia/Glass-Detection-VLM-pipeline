@@ -1,0 +1,26 @@
+Short Report
+
+What we did
+1. Investigated monocular depth map distortion in the RGB-D semantic mapping pipeline.
+2. Added configurable global monocular scaling and tested calibrated scale (0.9332) versus baseline (1.0).
+3. Built standalone diagnostics to avoid modifying core pipeline behavior:
+   - Shape distortion analysis (axis ratio checks)
+   - Confidence filtering analysis (flip + temporal consistency)
+   - Geometry comparison after confidence filtering
+   - Depth-dependent scaling analysis
+4. Added optional depth-dependent scaling support in the pipeline for experimentation.
+
+Results
+1. Confidence filtering improved pixel-wise error metrics (MAE, RMSE, AbsRel, and delta accuracy).
+2. Confidence filtering did not improve room geometry; XZ ratio became slightly worse in the tested setup.
+3. Depth-dependent analysis showed strong nonlinearity across depth ranges:
+   - Near-depth scale around 1.3088
+   - Far-depth scale around 0.9184
+   - Variation around 0.3904 (large)
+4. In end-to-end map quality, baseline configuration with scale 1.0 performed better overall.
+
+Decision
+1. Keep monocular scale at 1.0.
+2. Keep depth-dependent scaling disabled by default.
+3. Do not use confidence filtering as the main geometry-fix strategy for now.
+4. Keep the added options and diagnostics for future testing, but use the simple baseline settings for main runs.
