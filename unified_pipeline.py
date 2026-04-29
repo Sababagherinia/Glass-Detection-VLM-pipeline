@@ -133,7 +133,14 @@ class PipelineConfig:
     # Semantic mapping
     voxel_resolution: float = 0.05  # must match octomap_resolution
     min_detection_samples: int = 80  # min valid depth points in bbox
+    transparent_min_detection_samples: int = 20  # lower threshold for transparent objects
     fill_bbox_interior: bool = True  # fill missing depth inside detections
+    enable_transparent_depth_fallback: bool = True  # infer transparent depth from bbox context
+    transparent_context_ring_px: int = 16  # context ring width around bbox (pixels)
+    transparent_fallback_min_samples: int = 12  # min valid context samples for fallback
+    transparent_label_keywords: List[str] = field(default_factory=lambda: [
+        "glass", "transparent", "window", "mirror"
+    ])
     
     # Processing controls
     frame_step: int = 5  # process every Nth frame
@@ -743,6 +750,12 @@ class UnifiedPipeline:
                 box = det["box"]
                 score = float(det["score"])
                 label = det["label"]
+                label_lc = label.lower()
+                is_transparent = any(k in label_lc for k in self.config.transparent_label_keywords)
+                min_samples = (
+                    self.config.transparent_min_detection_samples
+                    if is_transparent else self.config.min_detection_samples
+                )
                 
                 # Extract 3D points from detection bbox
                 pts_cam = bbox_points_cam(
@@ -752,7 +765,12 @@ class UnifiedPipeline:
                     z_min=self.config.depth_min,
                     z_max=self.config.depth_max,
                     fill_interior=self.config.fill_bbox_interior,
-                    min_samples=self.config.min_detection_samples
+                    min_samples=min_samples,
+                    enable_boundary_fallback=(
+                        is_transparent and self.config.enable_transparent_depth_fallback
+                    ),
+                    boundary_ring_px=self.config.transparent_context_ring_px,
+                    boundary_min_samples=self.config.transparent_fallback_min_samples,
                 )
                 
                 if pts_cam is None:
@@ -976,6 +994,30 @@ def parse_args():
         help="Detection confidence threshold"
     )
     parser.add_argument(
+        "--min-detection-samples", type=int, default=80,
+        help="Minimum valid depth samples for non-transparent detections (default: 80)"
+    )
+    parser.add_argument(
+        "--transparent-min-samples", type=int, default=20,
+        help="Minimum valid depth samples for transparent detections (default: 20)"
+    )
+    parser.add_argument(
+        "--disable-transparent-fallback", action="store_true",
+        help="Disable boundary-context depth fallback for transparent detections"
+    )
+    parser.add_argument(
+        "--transparent-ring-px", type=int, default=16,
+        help="Ring width in pixels around transparent detections for depth fallback (default: 16)"
+    )
+    parser.add_argument(
+        "--transparent-ring-min-samples", type=int, default=12,
+        help="Minimum valid ring samples required for transparent fallback (default: 12)"
+    )
+    parser.add_argument(
+        "--no-fill-bbox-interior", action="store_true",
+        help="Disable interior depth filling inside detection bounding boxes"
+    )
+    parser.add_argument(
         "--debug-images", action="store_true",
         help="Save debug images with detection overlays"
     )
@@ -1030,6 +1072,12 @@ def main():
         max_frames=args.max_frames,
         detector_model=args.detector,
         detection_threshold=args.threshold,
+        min_detection_samples=args.min_detection_samples,
+        transparent_min_detection_samples=args.transparent_min_samples,
+        fill_bbox_interior=not args.no_fill_bbox_interior,
+        enable_transparent_depth_fallback=not args.disable_transparent_fallback,
+        transparent_context_ring_px=args.transparent_ring_px,
+        transparent_fallback_min_samples=args.transparent_ring_min_samples,
         save_debug_images=args.debug_images,
         verbose=not args.quiet,
         live_view=args.live_view,

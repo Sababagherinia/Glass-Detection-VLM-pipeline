@@ -195,7 +195,10 @@ def quaternion_to_rotation_matrix(q_xyzw: np.ndarray) -> np.ndarray:
 def bbox_points_cam(depth_m: np.ndarray, box: Tuple[float, float, float, float],
                    fx: float, fy: float, cx: float, cy: float,
                    stride: int = 4, z_min: float = 0.2, z_max: float = 4.0,
-                   fill_interior: bool = True, min_samples: int = 80) -> Optional[np.ndarray]:
+                   fill_interior: bool = True, min_samples: int = 80,
+                   enable_boundary_fallback: bool = False,
+                   boundary_ring_px: int = 16,
+                   boundary_min_samples: int = 12) -> Optional[np.ndarray]:
     """
     Extract 3D points from bounding box region in depth map.
     
@@ -207,6 +210,9 @@ def bbox_points_cam(depth_m: np.ndarray, box: Tuple[float, float, float, float],
         z_min, z_max: Valid depth range
         fill_interior: Fill missing interior depth with boundary median
         min_samples: Minimum number of valid points required
+        enable_boundary_fallback: Use boundary ring depth as proxy when interior is sparse
+        boundary_ring_px: Ring width (pixels) around bbox to sample context depth
+        boundary_min_samples: Minimum valid ring samples needed for fallback
         
     Returns:
         Points in camera frame (N, 3) or None if insufficient samples
@@ -230,7 +236,7 @@ def bbox_points_cam(depth_m: np.ndarray, box: Tuple[float, float, float, float],
 
     valid = (z > z_min) & (z < z_max) & np.isfinite(z)
     
-    # Fill interior missing depth using boundary median
+    # Fill interior missing depth using bbox boundary median
     if fill_interior and valid.sum() >= min_samples:
         h, w = u_grid.shape
         boundary_mask = np.zeros_like(valid, dtype=bool)
@@ -245,6 +251,31 @@ def bbox_points_cam(depth_m: np.ndarray, box: Tuple[float, float, float, float],
             invalid = ~valid
             z[invalid] = median_depth
             valid = (z > z_min) & (z < z_max) & np.isfinite(z)
+
+    # Transparent-object fallback: infer proxy depth from ring around the bbox
+    if valid.sum() < min_samples and enable_boundary_fallback and boundary_ring_px > 0:
+        h_img, w_img = depth_m.shape
+        rx0 = max(0, x0 - boundary_ring_px)
+        ry0 = max(0, y0 - boundary_ring_px)
+        rx1 = min(w_img, x1 + boundary_ring_px)
+        ry1 = min(h_img, y1 + boundary_ring_px)
+
+        us_ring = np.arange(rx0, rx1, stride)
+        vs_ring = np.arange(ry0, ry1, stride)
+
+        if len(us_ring) > 0 and len(vs_ring) > 0:
+            u_ring, v_ring = np.meshgrid(us_ring, vs_ring)
+            outside_bbox = ((u_ring < x0) | (u_ring >= x1) |
+                            (v_ring < y0) | (v_ring >= y1))
+            if np.any(outside_bbox):
+                z_ring = depth_m[v_ring, u_ring]
+                ring_valid = outside_bbox & (z_ring > z_min) & (z_ring < z_max) & np.isfinite(z_ring)
+
+                if ring_valid.sum() >= boundary_min_samples:
+                    proxy_depth = float(np.median(z_ring[ring_valid]))
+                    invalid = ~valid
+                    z[invalid] = proxy_depth
+                    valid = (z > z_min) & (z < z_max) & np.isfinite(z)
     
     if valid.sum() < min_samples:
         return None
