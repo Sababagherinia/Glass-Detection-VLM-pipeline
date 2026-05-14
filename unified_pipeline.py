@@ -14,12 +14,12 @@ Usage:
     
 Outputs:
     - geometric_map.bt: Pure depth-based 3D reconstruction (all geometry)
-    - combined_map.bt: Same reconstruction with semantic regions tracked
+    - combined_map.ot: Same reconstruction with semantic regions tracked (preserves color)
     - semantic_only_map.bt: Only detected glass/transparent regions (sparse)
     - semantic_voxels.pkl: Voxel coordinates -> labels mapping for detected regions
     - combined_voxels.ply: PLY visualization of all geometry with semantic regions colored
     
-Note: All .bt files can be visualized with: octovis <filename>.bt
+Note: .bt and .ot files can be visualized with octovis.
 """
 
 import os
@@ -62,6 +62,15 @@ try:
 except ImportError:
     OPEN3D_AVAILABLE = False
     print("Warning: open3d not available for live visualization. Install with: pip install open3d")
+
+# Visualization: colormaps for confidence-based rendering
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Warning: matplotlib not available for advanced visualization")
 
 # Import utilities
 from util import (
@@ -156,7 +165,18 @@ class PipelineConfig:
     save_semantic_only_map: bool = True  # only detected regions
     save_semantic_pickle: bool = True  # save voxel label weights
     save_debug_images: bool = False  # save detection visualizations
+    save_semantic_sidebyside: bool = False  # Save one final top-down RGB + semantic side-by-side visualization
+    topdown_resolution: float = 0.05  # meters per pixel for final top-down export
     verbose: bool = True
+    
+    # Visualization options (for live view)
+    vis_confidence_colormapping: bool = True  # Use colormap based on detection confidence
+    vis_confidence_colormap: str = "magma"  # Options: "coolwarm", "viridis", "plasma", "magma", "jet"
+    vis_confidence_min: float = 0.3  # Minimum confidence for visualization (0.0-1.0)
+    vis_transparency_enabled: bool = True  # Enable semi-transparent rendering
+    vis_transparency_alpha: float = 0.7  # Point transparency (0=invisible, 1=opaque)
+    vis_show_statistics: bool = True  # Show real-time statistics text overlay
+    vis_point_size_scale: float = 1.0  # Scale for point size in visualization
     
     # Live visualization
     live_view: bool = False  # Enable real-time Open3D visualization
@@ -214,6 +234,16 @@ class UnifiedPipeline:
         # Colored points storage for PLY export (point -> (r, g, b))
         self.colored_points = {}  # Dict mapping (x, y, z) tuple to (r, g, b)
         
+        # Live-view semantic overlay points (rendered above the geometry layer)
+        self.semantic_points = {}  # Dict mapping (x, y, z) tuple to (r, g, b)
+        
+        # Point confidence tracking for visualization (for confidence-based colormapping)
+        self.point_confidences = {}  # Dict mapping (x, y, z) tuple to confidence score (0-1)
+
+        # Final top-down RGB orthomosaic accumulators
+        self.topdown_rgb_accum = defaultdict(lambda: np.zeros(4, dtype=np.float64))
+        self.topdown_bounds = [np.inf, np.inf, -np.inf, -np.inf]  # x_min, z_min, x_max, z_max
+        
         # Statistics
         self.stats = {
             'frames_processed': 0,
@@ -225,6 +255,7 @@ class UnifiedPipeline:
         # Live visualization
         self.vis = None
         self.pcd = None
+        self.pcd_overlay = None
         # For dual-view comparison mode
         self.vis_geometric = None
         self.pcd_geometric = None
@@ -282,6 +313,192 @@ class UnifiedPipeline:
             scale_depth_range=self.config.scale_depth_range,
         )
     
+    def _confidence_to_color(self, confidence: float) -> Tuple[int, int, int]:
+        """
+        Convert detection confidence (0-1) to RGB color using a colormap.
+        Uses matplotlib colormaps for professional visualization.
+        
+        Args:
+            confidence: Detection confidence score (0-1)
+        
+        Returns:
+            (r, g, b) tuple with values 0-255
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            # Fallback to simple red-yellow-green gradient if matplotlib not available
+            if confidence < 0.5:
+                # Red to Yellow
+                r, g, b = 255, int(confidence * 2 * 255), 0
+            else:
+                # Yellow to Green
+                r, g, b = int((1 - confidence) * 2 * 255), 255, 0
+            return (r, g, b)
+        
+        # Get colormap from matplotlib
+        cmap_name = self.config.vis_confidence_colormap
+        cmap = cm.get_cmap(cmap_name)
+        
+        # Apply colormap (confidence is normalized 0-1)
+        rgba = cmap(confidence)
+        
+        # Convert RGBA [0,1] to RGB [0,255]
+        r = int(rgba[0] * 255)
+        g = int(rgba[1] * 255)
+        b = int(rgba[2] * 255)
+        
+        return (r, g, b)
+    
+    def _accumulate_topdown_rgb(self, rgb_pil: Image.Image, depth_m: np.ndarray,
+                                t_world: np.ndarray, q_xyzw: np.ndarray):
+        """Accumulate true RGB colors onto a top-down world grid from the current frame."""
+        if depth_m is None:
+            return
+
+        rgb_np = np.asarray(rgb_pil)
+        h, w = depth_m.shape
+        stride = max(1, int(self.config.point_stride))
+        res = float(self.config.topdown_resolution)
+
+        ys = np.arange(0, h, stride)
+        xs = np.arange(0, w, stride)
+        uu, vv = np.meshgrid(xs, ys)
+        z = depth_m[vv, uu]
+
+        valid = np.isfinite(z) & (z >= self.config.depth_min) & (z <= self.config.depth_max)
+        if not np.any(valid):
+            return
+
+        u = uu[valid].astype(np.float32)
+        v = vv[valid].astype(np.float32)
+        d = z[valid].astype(np.float32)
+
+        x_cam = (u - self.config.cx) * d / self.config.fx
+        y_cam = (v - self.config.cy) * d / self.config.fy
+        pts_cam = np.stack([x_cam, y_cam, d], axis=1)
+        pts_world = transform_points(pts_cam, t_world, q_xyzw)
+        colors = rgb_np[vv[valid], uu[valid]].astype(np.float64)
+
+        xw = pts_world[:, 0]
+        zw = pts_world[:, 2]
+        self.topdown_bounds[0] = min(self.topdown_bounds[0], float(np.min(xw)))
+        self.topdown_bounds[1] = min(self.topdown_bounds[1], float(np.min(zw)))
+        self.topdown_bounds[2] = max(self.topdown_bounds[2], float(np.max(xw)))
+        self.topdown_bounds[3] = max(self.topdown_bounds[3], float(np.max(zw)))
+
+        ix = np.floor(xw / res).astype(np.int32)
+        iz = np.floor(zw / res).astype(np.int32)
+        for i in range(len(ix)):
+            key = (int(ix[i]), int(iz[i]))
+            acc = self.topdown_rgb_accum[key]
+            acc[0:3] += colors[i]
+            acc[3] += 1.0
+
+    def _save_sidebyside_visualization(self, output_dir: str):
+        """Save one final top-down side-by-side image: RGB orthomosaic (left), semantic map (right)."""
+        if len(self.topdown_rgb_accum) == 0 and len(self.semantic_points) == 0:
+            if self.config.verbose:
+                print("  No accumulated data for final top-down visualization")
+            return
+
+        res = float(self.config.topdown_resolution)
+        x_min, z_min, x_max, z_max = self.topdown_bounds
+
+        # Expand bounds with semantic points if needed
+        for pt_key in self.semantic_points.keys():
+            x, _, z = pt_key
+            x_min = min(x_min, x)
+            z_min = min(z_min, z)
+            x_max = max(x_max, x)
+            z_max = max(z_max, z)
+
+        if not np.isfinite([x_min, z_min, x_max, z_max]).all():
+            if self.config.verbose:
+                print("  Invalid bounds for top-down visualization")
+            return
+
+        margin = max(res, 0.1)
+        x_min -= margin
+        z_min -= margin
+        x_max += margin
+        z_max += margin
+
+        width = max(64, int(np.ceil((x_max - x_min) / res)))
+        height = max(64, int(np.ceil((z_max - z_min) / res)))
+
+        rgb_topdown = np.ones((height, width, 3), dtype=np.uint8) * 235
+        semantic_map = np.ones((height, width, 3), dtype=np.uint8) * 12
+
+        # Render true RGB orthomosaic from accumulated per-cell averages
+        for (ix, iz), acc in self.topdown_rgb_accum.items():
+            if acc[3] <= 0:
+                continue
+            x = (ix + 0.5) * res
+            z = (iz + 0.5) * res
+            px = int((x - x_min) / res)
+            pz = int((z - z_min) / res)
+            if 0 <= px < width and 0 <= pz < height:
+                rgb_topdown[pz, px] = np.clip(acc[0:3] / acc[3], 0, 255).astype(np.uint8)
+
+        # Render semantic map with confidence-prioritized color per cell
+        semantic_cells = {}
+        for pt_key, color in self.semantic_points.items():
+            x, _, z = pt_key
+            ix = int(np.floor(x / res))
+            iz = int(np.floor(z / res))
+            conf = float(self.point_confidences.get(pt_key, 0.0))
+            existing = semantic_cells.get((ix, iz))
+            if existing is None or conf > existing[0]:
+                semantic_cells[(ix, iz)] = (conf, color)
+
+        for (ix, iz), (_, color) in semantic_cells.items():
+            x = (ix + 0.5) * res
+            z = (iz + 0.5) * res
+            px = int((x - x_min) / res)
+            pz = int((z - z_min) / res)
+            if 0 <= px < width and 0 <= pz < height:
+                r, g, b = color
+                semantic_map[pz, px] = np.array([r, g, b], dtype=np.uint8)
+
+        # Tight-crop around occupied content so the map does not appear tiny in a large blank canvas.
+        rgb_occ = np.any(rgb_topdown != 235, axis=2)
+        sem_occ = np.any(semantic_map != 12, axis=2)
+        occ = rgb_occ | sem_occ
+        if np.any(occ):
+            ys, xs = np.where(occ)
+            pad = 8
+            y0 = max(0, int(np.min(ys)) - pad)
+            y1 = min(height, int(np.max(ys)) + pad + 1)
+            x0 = max(0, int(np.min(xs)) - pad)
+            x1 = min(width, int(np.max(xs)) + pad + 1)
+            rgb_topdown = rgb_topdown[y0:y1, x0:x1]
+            semantic_map = semantic_map[y0:y1, x0:x1]
+
+        # Flip horizontally and vertically for true top-down view (correct both X and Z axes)
+        rgb_topdown = cv2.flip(rgb_topdown, -1)
+        semantic_map = cv2.flip(semantic_map, -1)
+
+        # Upscale small crops for readability in reports/presentations.
+        h_crop, w_crop = rgb_topdown.shape[:2]
+        min_display = 500
+        scale = max(1.0, min_display / float(max(h_crop, w_crop)))
+        if scale > 1.0:
+            new_w = max(1, int(round(w_crop * scale)))
+            new_h = max(1, int(round(h_crop * scale)))
+            rgb_topdown = cv2.resize(rgb_topdown, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            semantic_map = cv2.resize(semantic_map, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
+        sidebyside = np.hstack([rgb_topdown, semantic_map])
+
+        viz_dir = os.path.join(output_dir, "topdown_viz")
+        os.makedirs(viz_dir, exist_ok=True)
+        save_path = os.path.join(viz_dir, "topdown_sidebyside_final.png")
+        Image.fromarray(sidebyside).save(save_path)
+
+        if self.config.verbose:
+            print(f"  ✓ Final top-down visualization: {save_path}")
+            print(f"    Canvas: {width}x{height} px | Resolution: {res:.3f} m/px")
+
+
     def _init_live_viewer(self):
         """Initialize Open3D live visualization window."""
         if not OPEN3D_AVAILABLE:
@@ -317,10 +534,12 @@ class UnifiedPipeline:
             self.vis = o3d.visualization.Visualizer()
             self.vis.create_window(window_name="Live Map Construction", width=1280, height=720)
             self.pcd = o3d.geometry.PointCloud()
+            self.pcd_overlay = o3d.geometry.PointCloud()
             self.vis.add_geometry(self.pcd)
+            self.vis.add_geometry(self.pcd_overlay)
             opt = self.vis.get_render_option()
-            opt.point_size = 3.0
-            opt.background_color = np.asarray([0.5, 0.5, 0.5])
+            opt.point_size = 2.0
+            opt.background_color = np.asarray([0.06, 0.07, 0.10])
         
         self.view_initialized = False
 
@@ -351,33 +570,44 @@ class UnifiedPipeline:
             self._update_single_viewer()
     
     def _update_single_viewer(self):
-        """Update single window view."""
-        if not self.colored_points:
+        """Update single window view with a geometry layer and semantic overlay."""
+        if not self.geometric_points and not self.semantic_points:
             if self.config.verbose and self.stats['frames_processed'] <= 3:
                 print(f"  [Live View] No points yet (frame {self.stats['frames_processed']})")
             return
         
-        points = np.array(list(self.colored_points.keys()))
-        colors = np.array(list(self.colored_points.values())) / 255.0
+        geo_points = np.array(list(self.geometric_points.keys())) if self.geometric_points else np.empty((0, 3))
+        geo_colors = np.array(list(self.geometric_points.values())) / 255.0 if self.geometric_points else np.empty((0, 3))
+        sem_points = np.array(list(self.semantic_points.keys())) if self.semantic_points else np.empty((0, 3))
+        sem_colors = np.array(list(self.semantic_points.values())) / 255.0 if self.semantic_points else np.empty((0, 3))
         
         if self.config.verbose and self.stats['frames_processed'] <= 3:
-            print(f"  [Live View] Updating with {len(points)} points")
+            print(f"  [Live View] Geo: {len(geo_points)} | Semantic: {len(sem_points)}")
         
-        self.pcd.points = o3d.utility.Vector3dVector(points)
-        self.pcd.colors = o3d.utility.Vector3dVector(colors)
-        self.vis.update_geometry(self.pcd)
+        if len(geo_points) > 0:
+            self.pcd.points = o3d.utility.Vector3dVector(geo_points)
+            self.pcd.colors = o3d.utility.Vector3dVector(geo_colors)
+            self.vis.update_geometry(self.pcd)
         
-        # Reset view on first update to frame the geometry with better zoom
-        if not self.view_initialized and len(points) > 0:
-            if not self.config.live_view_follow:
-                # Static view mode
-                self.vis.reset_view_point(True)
-                # Zoom out for better overview
-                ctr = self.vis.get_view_control()
-                ctr.set_zoom(2)  # Zoom out (bigger = more zoomed out)
-            else:
-                # Follow mode: do initial reset but we'll override it immediately after
-                self.vis.reset_view_point(True)
+        if self.pcd_overlay is not None and len(sem_points) > 0:
+            # Bright overlay points for detections only
+            overlay_colors = sem_colors.copy()
+            if self.config.vis_transparency_enabled and self.point_confidences:
+                confidences = np.array([self.point_confidences.get(tuple(p), 0.5) for p in sem_points])
+                bg_color = np.array([0.06, 0.07, 0.10])
+                alpha_values = np.clip(confidences, self.config.vis_confidence_min, 1.0) * self.config.vis_transparency_alpha
+                for i in range(len(overlay_colors)):
+                    overlay_colors[i] = overlay_colors[i] * alpha_values[i] + bg_color * (1 - alpha_values[i])
+            
+            self.pcd_overlay.points = o3d.utility.Vector3dVector(sem_points)
+            self.pcd_overlay.colors = o3d.utility.Vector3dVector(overlay_colors)
+            self.vis.update_geometry(self.pcd_overlay)
+        
+        # Reset view on first update
+        if not self.view_initialized and (len(geo_points) > 0 or len(sem_points) > 0):
+            self.vis.reset_view_point(True)
+            ctr = self.vis.get_view_control()
+            ctr.set_zoom(1.6)
             self.view_initialized = True
         
         # Follow camera mode: update camera to track sensor position
@@ -562,6 +792,12 @@ class UnifiedPipeline:
         # Save outputs
         self._save_outputs()
         
+        # Generate final top-down visualization if enabled
+        if self.config.save_semantic_sidebyside:
+            if self.config.verbose:
+                print("\nGenerating final top-down visualization...")
+            self._save_sidebyside_visualization(self.config.output_dir)
+        
         # Print statistics
         self._print_statistics()
     
@@ -713,9 +949,11 @@ class UnifiedPipeline:
                 z_min=self.config.depth_min,
                 z_max=self.config.depth_max
             )
-            
             if pts_cam_full.shape[0] > 0:
                 pts_world_full = transform_points(pts_cam_full, t_world, q_xyzw)
+
+                if self.config.save_semantic_sidebyside:
+                    self._accumulate_topdown_rgb(rgb_pil, depth_m, t_world, q_xyzw)
                 
                 # Insert into geometric map (pure geometry, no semantics)
                 if self.geometric_map is not None:
@@ -726,22 +964,24 @@ class UnifiedPipeline:
                     # Insert points with white color for regular geometry
                     for pt in pts_world_full:
                         self.combined_map.updateNode(pt, True)  # occupied
-                        self.combined_map.integrateNodeColor(pt, 144, 238, 180)  # light green
+                        self.combined_map.integrateNodeColor(pt, 112, 128, 144)  # slate gray
                         # Track colored point for PLY export
                         pt_key = (float(pt[0]), float(pt[1]), float(pt[2]))
-                        self.colored_points[pt_key] = (144, 238, 180)
-                        # Also track in geometric-only view (for comparison mode)
-                        if self.config.live_view_compare:
-                            self.geometric_points[pt_key] = (200, 200, 200)  # gray for geometric
+                        self.colored_points[pt_key] = (112, 128, 144)
+                        # Track geometry for live visualization
+                        self.geometric_points[pt_key] = (120, 120, 120)
                 
                 self.stats['points_geometric'] += len(pts_world_full)
         
         # 2. Run detection and build semantic map
-        detections = self.detector.detect(
-            rgb_pil, 
-            self.config.detection_queries, 
-            threshold=self.config.detection_threshold
-        )
+            # Skip detection if no queries configured (geometry-only baseline)
+            detections = None
+            if self.config.detection_queries:
+                detections = self.detector.detect(
+                    rgb_pil, 
+                    self.config.detection_queries, 
+                    threshold=self.config.detection_threshold
+                )
         
         if detections:
             self.stats['detections_total'] += len(detections)
@@ -784,16 +1024,25 @@ class UnifiedPipeline:
                     voxel_key = world_to_voxel_idx(p, self.config.voxel_resolution)
                     self.semantic_voxels[voxel_key][label] += weight
                 
-                # Update colors in combined map for semantic regions (BRIGHT RED)
+                # Update colors in combined map for semantic regions
                 if self.combined_map is not None:
-                    # Use bright red for detected glass/transparent regions
-                    r, g, b = 255, 0, 0  # Bright red
+                    # Use confidence-based colormapping if enabled
+                    if self.config.vis_confidence_colormapping:
+                        # Map confidence to color using colormap
+                        r, g, b = self._confidence_to_color(score)
+                    else:
+                        # Fallback to bright red for detected glass/transparent regions
+                        r, g, b = 255, 0, 0  # Bright red
+                    
                     for pt in pts_world:
                         self.combined_map.updateNode(pt, True)
                         self.combined_map.integrateNodeColor(pt, r, g, b)
-                        # Update colored point for PLY export
+                        # Update colored point for PLY export and live view
                         pt_key = (float(pt[0]), float(pt[1]), float(pt[2]))
                         self.colored_points[pt_key] = (r, g, b)
+                        # Track confidence for visualization
+                        self.point_confidences[pt_key] = score
+                        self.semantic_points[pt_key] = (r, g, b)
                 
                 self.stats['points_semantic'] += len(pts_world)
                 
@@ -884,8 +1133,9 @@ class UnifiedPipeline:
         
         # Save combined map (geometry + semantic regions)
         if self.config.save_combined_map and self.combined_map:
-            combined_path = os.path.join(output_dir, "combined_map.bt")
-            self.combined_map.writeBinary(combined_path)
+            combined_path = os.path.join(output_dir, "combined_map.ot")
+            # ColorOcTree should be written as .ot to retain voxel color data.
+            self.combined_map.write(combined_path)
             if self.config.verbose:
                 print(f"  ✓ Combined map (geometry + semantic): {combined_path}")
         
@@ -1022,6 +1272,10 @@ def parse_args():
         help="Save debug images with detection overlays"
     )
     parser.add_argument(
+        "--sidebyside", action="store_true",
+        help="Save one final top-down RGB orthomosaic + semantic map side-by-side image"
+    )
+    parser.add_argument(
         "--quiet", action="store_true",
         help="Suppress verbose output"
     )
@@ -1079,6 +1333,7 @@ def main():
         transparent_context_ring_px=args.transparent_ring_px,
         transparent_fallback_min_samples=args.transparent_ring_min_samples,
         save_debug_images=args.debug_images,
+        save_semantic_sidebyside=args.sidebyside,
         verbose=not args.quiet,
         live_view=args.live_view,
         live_view_update_freq=args.live_view_freq,

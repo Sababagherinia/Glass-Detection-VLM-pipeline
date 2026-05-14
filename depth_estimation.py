@@ -14,12 +14,12 @@ pipe = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2
 # load all images from rgb folder
 
 
-for filename in os.listdir("data/rgb"):
-    image = Image.open(f"data/rgb/{filename}")
+for filename in os.listdir("data/test_depth"):
+    image = Image.open(f"data/test_depth/{filename}")
 
     # inference
     depth = pipe(image)["depth"]
 
     # saving depth map colored for visualization
-    depth.save(f"data/depth/{filename}_depth.png")
+    depth.save(f"output/estimated_depth/{filename}_depth.png")
     print(f"Depth map for {filename} saved to depth folder")
